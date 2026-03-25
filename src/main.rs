@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     // Read the public key file and output its content
     let key_path = tilde(selected).into_owned();
     let pub_path = if key_path.ends_with(".pub") {
-        key_path.clone()
+        key_path
     } else {
         format!("{}.pub", key_path)
     };
