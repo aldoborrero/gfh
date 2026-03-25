@@ -149,3 +149,84 @@ fn serialise_config(cfg: &Config) -> String {
 
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_config() {
+        let input = "12345678::~/.ssh/id_ed25519_sk\n87654321::~/.ssh/id_ecdsa_sk\n";
+        let cfg = parse_config(input).unwrap();
+        assert_eq!(cfg.get("12345678"), Some("~/.ssh/id_ed25519_sk"));
+        assert_eq!(cfg.get("87654321"), Some("~/.ssh/id_ecdsa_sk"));
+        assert!(!cfg.is_empty());
+    }
+
+    #[test]
+    fn parse_empty_input_returns_empty_config() {
+        let cfg = parse_config("").unwrap();
+        assert!(cfg.is_empty());
+    }
+
+    #[test]
+    fn parse_only_comments_returns_empty_config() {
+        let input = "# comment one\n# comment two\n";
+        let cfg = parse_config(input).unwrap();
+        assert!(cfg.is_empty());
+    }
+
+    #[test]
+    fn parse_malformed_line_errors() {
+        let input = "no-separator-here\n";
+        assert!(parse_config(input).is_err());
+    }
+
+    #[test]
+    fn parse_preserves_comments_and_blanks() {
+        let input = "# my keys\n\n12345678::~/.ssh/key\n";
+        let cfg = parse_config(input).unwrap();
+
+        assert!(matches!(&cfg.entries[0], ConfigEntry::Comment(s) if s == "# my keys"));
+        assert!(matches!(&cfg.entries[1], ConfigEntry::Blank));
+        assert!(matches!(&cfg.entries[2], ConfigEntry::Mapping { serial, .. } if serial == "12345678"));
+    }
+
+    #[test]
+    fn roundtrip_preserves_content() {
+        let input = "# Primary YubiKey\n12345678::~/.ssh/id_ed25519_sk\n\n# Backup\n87654321::~/.ssh/id_ecdsa_sk\n";
+        let cfg = parse_config(input).unwrap();
+        let output = serialise_config(&cfg);
+        assert_eq!(input, output);
+    }
+
+    #[test]
+    fn insert_updates_existing_key() {
+        let input = "12345678::~/.ssh/old_key\n";
+        let mut cfg = parse_config(input).unwrap();
+        cfg.insert("12345678".to_owned(), "~/.ssh/new_key".to_owned());
+        assert_eq!(cfg.get("12345678"), Some("~/.ssh/new_key"));
+    }
+
+    #[test]
+    fn insert_appends_new_key() {
+        let mut cfg = Config::new();
+        cfg.insert("12345678".to_owned(), "~/.ssh/key".to_owned());
+        assert_eq!(cfg.get("12345678"), Some("~/.ssh/key"));
+        assert!(!cfg.is_empty());
+    }
+
+    #[test]
+    fn get_unknown_serial_returns_none() {
+        let input = "12345678::~/.ssh/key\n";
+        let cfg = parse_config(input).unwrap();
+        assert_eq!(cfg.get("99999999"), None);
+    }
+
+    #[test]
+    fn default_config_is_empty() {
+        let cfg = Config::default();
+        assert!(cfg.is_empty());
+        assert_eq!(cfg.get("anything"), None);
+    }
+}
