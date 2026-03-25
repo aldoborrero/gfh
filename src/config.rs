@@ -126,10 +126,6 @@ fn parse_config(content: &str) -> Result<Config> {
         output.insert(serial.to_owned(), key.to_owned());
     }
 
-    if output.is_empty() {
-        anyhow::bail!("config is empty. Use `gfh -a` to import a SSH key");
-    }
-
     Ok(output)
 }
 

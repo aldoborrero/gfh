@@ -41,14 +41,11 @@ pub fn run<P: AsRef<Path>>(path: P) -> Result<()> {
         }
     };
 
-    let mut cfg =
-        config::read_config(&path).or_else(|e| match e.downcast_ref::<std::io::Error>() {
-            None => Err(e),
-            Some(inner) => match inner.kind() {
-                std::io::ErrorKind::NotFound => Ok(config::Config::default()),
-                _ => Err(e),
-            },
-        })?;
+    let mut cfg = if path.as_ref().exists() {
+        config::read_config(&path)?
+    } else {
+        config::Config::default()
+    };
 
     cfg.insert(key.serial(), ssh_key);
     config::write_config(path, cfg)?;

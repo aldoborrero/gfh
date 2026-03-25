@@ -27,6 +27,11 @@ fn main() -> Result<()> {
     }
 
     let cfg = config::read_config(&path)?;
+
+    if cfg.is_empty() {
+        anyhow::bail!("config is empty. Use `gfh -a` to import a SSH key");
+    }
+
     let devices = util::get_all_devices()?;
 
     let selected = devices

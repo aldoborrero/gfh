@@ -28,7 +28,10 @@ impl FidoDevice {
                     .find(|x| x.starts_with("serial_number="));
 
                 match found {
-                    Some(part) => part.split_once('=').unwrap().1.to_owned(),
+                    Some(part) => part
+                        .split_once('=')
+                        .map(|(_, v)| v.to_owned())
+                        .unwrap_or_else(|| String::from("unknown")),
                     None => String::from("unknown"),
                 }
             }

@@ -9,7 +9,7 @@ pub fn get_yubikeys() -> Result<Vec<FidoDevice>> {
     let mut output = Vec::<FidoDevice>::new();
 
     for reader in readers.iter()? {
-        if reader.name().as_ref().to_ascii_lowercase().contains(&"yubikey") {
+        if reader.name().as_ref().to_ascii_lowercase().contains("yubikey") {
             let yubikey = reader
                 .open()
                 .with_context(|| format!("failed to open yubikey {}", reader.name()))?;
