@@ -8,10 +8,16 @@ mod config;
 mod util;
 mod yubikey;
 
+fn default_config_path() -> String {
+    dirs::config_dir()
+        .map(|p| p.join("gfh").join("keys").to_string_lossy().into_owned())
+        .unwrap_or_else(|| "~/.config/gfh/keys".to_owned())
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, default_value = "~/.config/gfh/keys")]
+    #[arg(short, long, default_value_t = default_config_path())]
     file: String,
 
     #[arg(short, long)]

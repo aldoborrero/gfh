@@ -20,6 +20,7 @@ strip = true
 anyhow = "1.0"
 clap = { version = "4.0.19", features = ["derive"] }
 ctap-hid-fido2 = "3.4.2"
+dirs = "6"
 inquire = "0.5.2"
 shellexpand = "2.1.2"
 yubikey_api = { package = "yubikey", version = "0.6.0" }
