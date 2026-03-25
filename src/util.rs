@@ -56,7 +56,7 @@ pub fn get_generics() -> Vec<FidoDevice> {
 
 pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
     let fidos = get_generics();
-    let mut yubikeys = yubikey::get_yubikeys()?;
+    let mut yubikeys = yubikey::get_yubikeys();
     let mut fidos: Vec<FidoDevice> = fidos
         .into_iter()
         .filter(|x| match x {

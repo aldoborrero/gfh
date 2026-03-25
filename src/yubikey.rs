@@ -1,21 +1,28 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
 use yubikey_api::Context as YKContext;
 
 use crate::util::FidoDevice;
 
-pub fn get_yubikeys() -> Result<Vec<FidoDevice>> {
-    let mut readers: YKContext =
-        YKContext::open().with_context(|| "failed to create reader context for yubikeys")?;
-    let mut output = Vec::<FidoDevice>::new();
+pub fn get_yubikeys() -> Vec<FidoDevice> {
+    let mut readers = match YKContext::open() {
+        Ok(ctx) => ctx,
+        Err(_) => return Vec::new(),
+    };
 
-    for reader in readers.iter()? {
+    let iter = match readers.iter() {
+        Ok(iter) => iter,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut output = Vec::new();
+    for reader in iter {
         if reader.name().as_ref().to_ascii_lowercase().contains("yubikey") {
-            let yubikey = reader
-                .open()
-                .with_context(|| format!("failed to open yubikey {}", reader.name()))?;
-            output.push(FidoDevice::YubiKey(yubikey))   
+            match reader.open() {
+                Ok(yubikey) => output.push(FidoDevice::YubiKey(yubikey)),
+                Err(e) => eprintln!("warning: failed to open yubikey {}: {}", reader.name(), e),
+            }
         }
     }
 
-    Ok(output)
+    output
 }
