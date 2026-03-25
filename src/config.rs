@@ -30,7 +30,6 @@ impl Config {
     }
 
     pub fn insert(&mut self, serial: String, key: String) {
-        // Update existing or append
         for entry in &mut self.entries {
             if let ConfigEntry::Mapping {
                 serial: s,
@@ -44,6 +43,18 @@ impl Config {
             }
         }
         self.entries.push(ConfigEntry::Mapping { serial, key });
+    }
+
+    pub fn push_comment(&mut self, text: String) {
+        self.entries.push(ConfigEntry::Comment(text));
+    }
+
+    pub fn push_blank(&mut self) {
+        self.entries.push(ConfigEntry::Blank);
+    }
+
+    pub fn entries(&self) -> &[ConfigEntry] {
+        &self.entries
     }
 
     pub fn is_empty(&self) -> bool {
@@ -99,12 +110,12 @@ fn parse_config(content: &str) -> Result<Config> {
 
     for (i, line) in lines {
         if line.is_empty() {
-            output.entries.push(ConfigEntry::Blank);
+            output.push_blank();
             continue;
         }
 
         if line.starts_with('#') {
-            output.entries.push(ConfigEntry::Comment(line.to_owned()));
+            output.push_comment(line.to_owned());
             continue;
         }
 
@@ -132,7 +143,7 @@ fn parse_config(content: &str) -> Result<Config> {
 fn serialise_config(cfg: &Config) -> String {
     let mut output = String::new();
 
-    for entry in &cfg.entries {
+    for entry in cfg.entries() {
         match entry {
             ConfigEntry::Comment(text) => {
                 output.push_str(text);
@@ -187,9 +198,9 @@ mod tests {
         let input = "# my keys\n\n12345678::~/.ssh/key\n";
         let cfg = parse_config(input).unwrap();
 
-        assert!(matches!(&cfg.entries[0], ConfigEntry::Comment(s) if s == "# my keys"));
-        assert!(matches!(&cfg.entries[1], ConfigEntry::Blank));
-        assert!(matches!(&cfg.entries[2], ConfigEntry::Mapping { serial, .. } if serial == "12345678"));
+        assert!(matches!(&cfg.entries()[0], ConfigEntry::Comment(s) if s == "# my keys"));
+        assert!(matches!(&cfg.entries()[1], ConfigEntry::Blank));
+        assert!(matches!(&cfg.entries()[2], ConfigEntry::Mapping { serial, .. } if serial == "12345678"));
     }
 
     #[test]
