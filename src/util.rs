@@ -1,8 +1,6 @@
 use anyhow::Result;
 use core::fmt;
 use ctap_hid_fido2::HidInfo;
-use sha2::{Digest, Sha256};
-use std::hint::unreachable_unchecked;
 use yubikey_api::YubiKey;
 
 use crate::yubikey;
@@ -31,7 +29,7 @@ impl FidoDevice {
 
                 match found {
                     Some(part) => part.split_once('=').unwrap().1.to_owned(),
-                    None => String::from("unknown"), // None => panic!("failed to find serial ID for {}. Please open an issue so we can try to resolve this!", self.name()),
+                    None => String::from("unknown"),
                 }
             }
         }
@@ -61,8 +59,7 @@ pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
         .filter(|v| matches!(v, FidoDevice::Generic(_)))
         .filter(|x| match x {
             FidoDevice::Generic(h) => !h.product_string.to_lowercase().contains("yubikey"),
-            // Literally only FidoDevice::Generic can be in this vec.
-            _ => unsafe { unreachable_unchecked() },
+            _ => unreachable!("filtered to Generic variants only"),
         })
         .collect::<Vec<FidoDevice>>();
 
@@ -70,10 +67,22 @@ pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
     Ok(fidos)
 }
 
-#[allow(dead_code)]
-pub fn sha256(input: &str) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(input);
-    let output = hasher.finalize();
-    output.to_vec()
+pub fn is_key_in_agent(key_content: &str) -> bool {
+    let output = std::process::Command::new("ssh-add")
+        .arg("-L")
+        .output();
+    match output {
+        Ok(out) if out.status.success() => {
+            let agent_keys = String::from_utf8_lossy(&out.stdout);
+            // Match on key type + base64 blob (first two fields)
+            let parts: Vec<&str> = key_content.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let key_id = format!("{} {}", parts[0], parts[1]);
+                agent_keys.lines().any(|line| line.contains(&key_id))
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
 }

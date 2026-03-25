@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-// use ctap_hid_fido2::HidInfo;
 use shellexpand::tilde;
-// use std::{error::Error, fs};
+use std::fs;
 
 mod add_key;
 mod config;
@@ -27,7 +26,7 @@ fn main() -> Result<()> {
         return add_key::run(path);
     }
 
-    let cfg = config::read_config(&path).expect("could not read config path");
+    let cfg = config::read_config(&path)?;
     let devices = util::get_all_devices()?;
 
     let selected = devices
@@ -35,12 +34,22 @@ fn main() -> Result<()> {
         .find_map(|y| cfg.get(&y.serial()))
         .with_context(|| format!("no matching FIDO key found in the config at {path}"))?;
 
-    // TODO: resolve file paths in config relative to the config file?
+    // Read the public key file and output its content
+    let key_path = tilde(selected).into_owned();
+    let pub_path = if key_path.ends_with(".pub") {
+        key_path.clone()
+    } else {
+        format!("{}.pub", key_path)
+    };
+    let key_content = fs::read_to_string(&pub_path)
+        .with_context(|| format!("failed to read public key at {}", pub_path))?;
+    let key_content = key_content.trim();
 
-    // We need to prefix it with `key::` so that Git doesn't reject it. It then
-    // gets picked up by `bin/gfh-keygen` which does some magic stuff to feed
-    // the key to `ssh-keygen`
-    println!("key::{selected}");
+    if !util::is_key_in_agent(key_content) {
+        eprintln!("warning: signing key not found in ssh-agent. Run `ssh-add -K` to load keys from your FIDO device.");
+    }
+
+    println!("key::{}", key_content);
 
     Ok(())
 }

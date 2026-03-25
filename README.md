@@ -30,35 +30,13 @@ than likely do not need to use gfh. This tool has a very niche use case due to
 Git not supporting multiple `signingkey`s. If you only use one resident SSH key
 for signing your commits, you can just use that config option without gfh.
 
-### Caveats
-
-I've only personally validated gfh as working on macOS, some friends of mine has
-had it work fine on Windows (10 & 11), but I haven't had any luck with that
-myself.
-
-<!-- On Windows, it appears that signing commits with a resident SSH key is
-fundamentally broken in some weird way, requiring an Administrator prompt in
-order to properly work - even though if you run the `ssh-keygen` command Git
-runs and run it by itself, it runs perfectly fine. I suspect this might be
-related to that section of Windows OpenSSH not being integrated with Windows
-Hello like using it for SSH connections is, but I'm unsure. -->
-
-On Linux, gfh seems to fail with
-`warning: gpg.ssh.defaultKeyCommand succeeded but returned no keys: key::...`,
-which makes no sense, because the format it expects is evidently there. A friend
-of mine has said that running `` eval `ssh-agent` `` (or `eval (ssh-agent -c)`
-as the Fish equivalent) solved the issue for them, however I haven't had any
-luck with this personally so YMMV.
-
-If you ever find out a consistent workaround for these problems, please let me
-know and I'll try and see if I can reproduce them.
-
 ## Usage
 
 The simplest way to add your keys to gfh is via `gfh -a`. This will prompt you
 to select the FIDO key to use, as well as the path to the public key (or private
 key) to use with it (this must be a resident key that you generated for that
-particular FIDO device).
+particular FIDO device). If only one device is connected, it will be
+auto-selected.
 
 If you prefer, you can edit the config manually by creating a file at
 `~/.config/gfh/keys` with the following format:
@@ -68,8 +46,7 @@ serial::~/.ssh/id_ed25519_sk
 serial::~/.ssh/id_ecdsa_sk
 ```
 
-(Blank lines & lines starting with `#` will be ignored, but won't be retained if
-you use `gfh -a`)
+(Blank lines & lines starting with `#` are preserved.)
 
 After importing your keys to gfh, run the following commands to set up SSH
 signing with Git:
@@ -78,15 +55,19 @@ signing with Git:
 git config --global commit.gpgsign true
 git config --global tag.gpgsign true
 git config --global gpg.format "ssh"
-git config --global gpg.ssh.program "gfh-keygen"
 git config --global gpg.ssh.defaultKeyCommand "gfh"
 ```
 
-If you're on Windows, change the last two commands to set `gfh-keygen.exe` and
-`gfh.exe` respectively.
-
 (You shouldn't set `user.signingkey` because gfh will handle that for you
 automatically.)
+
+gfh reads the `.pub` file corresponding to the configured key path and outputs
+its content directly. Git then uses ssh-agent (`-U` flag) to find the matching
+private key for signing. This means:
+
+- No need for `gpg.ssh.program` — gfh works with the default `ssh-keygen`.
+- The signing key must be loaded in your ssh-agent (gfh warns if it's not).
+- Run `ssh-add -K` to load resident keys from your plugged-in FIDO device.
 
 If all goes according to plan, you should be able to create a new commit or tag
 with your FIDO key plugged in, and Git will correctly prompt you to sign with
@@ -94,34 +75,13 @@ it.
 
 ## Installation
 
-### Releases are currently pending fixed CI builds, in the meantime you can install via Cargo just fine.
-
-Static binary builds of gfh are available on our
-[releases page](https://github.com/Ovyerus/gfh/releases) for Windows (x86), Mac
-(ARM & x86), and Linux (various architectures).
-
-### Homebrew
-
-`brew install ovyerus/tap/gfh`
-
-### Scoop
+### Nix
 
 ```
-scoop bucket add ovyerus https://github.com/Ovyerus/bucket
-scoop install gfh
+nix run github:aldoborrero/gfh
 ```
 
-### AUR (unofficial)
-
-An unofficial AUR package from [wale](https://github.com/wale) is available at
-https://aur.archlinux.org/packages/gfh. You can use your favourite AUR helper,
-or you can install it manually like so:
-
-```
-git clone https://aur.archlinux.org/gfh.git
-cd gfh
-makepkg -fsri
-```
+Or add to your flake inputs and reference `gfh.packages.${system}.default`.
 
 ### Crate
 
@@ -129,11 +89,20 @@ makepkg -fsri
 
 ### From source
 
-Pull this repository and run `cargo build --release`, and look for the `gfh` and
-`gfh-keygen` binaries in `./target/release/`.
+Pull this repository and run `cargo build --release`, and look for the `gfh`
+binary in `./target/release/`.
 
 When building from source or from Cargo, on Linux you will need the following
 packages: `pkg-config libpcsclite-dev libudev-dev`
+
+### Homebrew
+
+`brew install ovyerus/tap/gfh`
+
+### AUR (unofficial)
+
+An unofficial AUR package from [wale](https://github.com/wale) is available at
+https://aur.archlinux.org/packages/gfh.
 
 ## License
 
