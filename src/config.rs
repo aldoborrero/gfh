@@ -142,7 +142,7 @@ fn serialise_config(cfg: &Config) -> String {
                 output.push('\n');
             }
             ConfigEntry::Mapping { serial, key } => {
-                output.push_str(&format!("{}::{}\n", serial, key.replace('\\', "\\\\")));
+                output.push_str(&format!("{}::{}\n", serial, key));
             }
         }
     }
