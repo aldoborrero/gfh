@@ -57,6 +57,16 @@ impl Config {
         &self.entries
     }
 
+    pub fn without(self, serial: &str) -> Self {
+        Config {
+            entries: self
+                .entries
+                .into_iter()
+                .filter(|e| !matches!(e, ConfigEntry::Mapping { serial: s, .. } if s == serial))
+                .collect(),
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         !self
             .entries
@@ -239,5 +249,23 @@ mod tests {
         let cfg = Config::default();
         assert!(cfg.is_empty());
         assert_eq!(cfg.get("anything"), None);
+    }
+
+    #[test]
+    fn without_removes_mapping() {
+        let input = "12345678::~/.ssh/key_a\n87654321::~/.ssh/key_b\n";
+        let cfg = parse_config(input).unwrap();
+        let cfg = cfg.without("12345678");
+        assert_eq!(cfg.get("12345678"), None);
+        assert_eq!(cfg.get("87654321"), Some("~/.ssh/key_b"));
+    }
+
+    #[test]
+    fn without_preserves_comments() {
+        let input = "# keep me\n12345678::~/.ssh/key\n";
+        let cfg = parse_config(input).unwrap();
+        let cfg = cfg.without("12345678");
+        assert!(cfg.is_empty());
+        assert!(matches!(&cfg.entries()[0], ConfigEntry::Comment(s) if s == "# keep me"));
     }
 }

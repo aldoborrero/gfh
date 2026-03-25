@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use shellexpand::tilde;
 use std::fs;
 
@@ -17,25 +17,41 @@ fn default_config_path() -> String {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, default_value_t = default_config_path())]
+    #[arg(short, long, global = true, default_value_t = default_config_path())]
     file: String,
 
-    #[arg(short, long)]
-    add: bool,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Import a FIDO device and associate it with an SSH key
+    Add,
+    /// List configured device-to-key mappings and their status
+    List,
+    /// Remove a device mapping from the config
+    Remove,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
     let path = tilde(&args.file).into_owned();
 
-    if args.add {
-        return add_key::run(path);
+    match args.command {
+        Some(Command::Add) => add_key::run(path),
+        Some(Command::List) => cmd_list(&path),
+        Some(Command::Remove) => cmd_remove(&path),
+        None => cmd_sign(&path),
     }
+}
 
-    let cfg = config::read_config(&path)?;
+/// Default: output the signing key for git's defaultKeyCommand
+fn cmd_sign(path: &str) -> Result<()> {
+    let cfg = config::read_config(path)?;
 
     if cfg.is_empty() {
-        anyhow::bail!("config is empty. Use `gfh -a` to import a SSH key");
+        anyhow::bail!("config is empty. Use `gfh add` to import a SSH key");
     }
 
     let devices = util::get_all_devices()?;
@@ -45,7 +61,6 @@ fn main() -> Result<()> {
         .find_map(|y| cfg.get(&y.serial()))
         .with_context(|| format!("no matching FIDO key found in the config at {path}"))?;
 
-    // Read the public key file and output its content
     let key_path = tilde(selected).into_owned();
     let pub_path = if key_path.ends_with(".pub") {
         key_path
@@ -61,6 +76,86 @@ fn main() -> Result<()> {
     }
 
     println!("key::{}", key_content);
+    Ok(())
+}
+
+/// List all configured mappings with connection status
+fn cmd_list(path: &str) -> Result<()> {
+    let cfg = if std::path::Path::new(path).exists() {
+        config::read_config(path)?
+    } else {
+        eprintln!("No config file found at {path}. Use `gfh add` to get started.");
+        return Ok(());
+    };
+
+    if cfg.is_empty() {
+        eprintln!("Config is empty. Use `gfh add` to import a SSH key.");
+        return Ok(());
+    }
+
+    let devices = util::get_all_devices()?;
+    let connected_serials: Vec<String> = devices.iter().map(|d| d.serial()).collect();
+
+    for entry in cfg.entries() {
+        if let config::ConfigEntry::Mapping { serial, key } = entry {
+            let connected = if connected_serials.contains(serial) {
+                "connected"
+            } else {
+                "not connected"
+            };
+
+            let expanded = tilde(key);
+            let key_exists = std::path::Path::new(expanded.as_ref()).exists();
+            let key_status = if key_exists { "" } else { " (key file missing)" };
+
+            println!("{serial} :: {key} [{connected}]{key_status}");
+        }
+    }
+
+    Ok(())
+}
+
+/// Remove a device mapping interactively
+fn cmd_remove(path: &str) -> Result<()> {
+    let cfg = if std::path::Path::new(path).exists() {
+        config::read_config(path)?
+    } else {
+        anyhow::bail!("no config file found at {path}");
+    };
+
+    if cfg.is_empty() {
+        anyhow::bail!("config is empty, nothing to remove");
+    }
+
+    let mappings: Vec<(String, String)> = cfg
+        .entries()
+        .iter()
+        .filter_map(|e| match e {
+            config::ConfigEntry::Mapping { serial, key } => {
+                Some((serial.clone(), key.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+
+    let labels: Vec<String> = mappings
+        .iter()
+        .map(|(s, k)| format!("{s} :: {k}"))
+        .collect();
+
+    let selected = inquire::Select::new("Select mapping to remove:", labels)
+        .prompt()
+        .with_context(|| "failed to create selection input")?;
+
+    let idx = mappings
+        .iter()
+        .position(|(s, k)| format!("{s} :: {k}") == selected)
+        .unwrap();
+    let (serial, _) = &mappings[idx];
+
+    let new_cfg = cfg.without(serial);
+    config::write_config(path, new_cfg)?;
+    println!("Removed mapping for serial {serial}.");
 
     Ok(())
 }
