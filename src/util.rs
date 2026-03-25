@@ -57,14 +57,13 @@ pub fn get_generics() -> Vec<FidoDevice> {
 pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
     let fidos = get_generics();
     let mut yubikeys = yubikey::get_yubikeys()?;
-    let mut fidos = fidos
+    let mut fidos: Vec<FidoDevice> = fidos
         .into_iter()
-        .filter(|v| matches!(v, FidoDevice::Generic(_)))
         .filter(|x| match x {
             FidoDevice::Generic(h) => !h.product_string.to_lowercase().contains("yubikey"),
-            _ => unreachable!("filtered to Generic variants only"),
+            _ => false,
         })
-        .collect::<Vec<FidoDevice>>();
+        .collect();
 
     fidos.append(&mut yubikeys);
     Ok(fidos)
