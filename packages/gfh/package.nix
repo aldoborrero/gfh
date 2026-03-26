@@ -14,7 +14,7 @@ let
   craneLib = (inputs.crane.mkLib pkgs').overrideToolchain rust;
 
   commonArgs = {
-    stdenv = if stdenv.isLinux then stdenv else pkgs'.clangStdenv;
+    stdenv = p: if p.stdenv.isLinux then p.stdenv else p.clangStdenv;
     src = craneLib.cleanCargoSource (craneLib.path ../../.);
 
     buildInputs =
