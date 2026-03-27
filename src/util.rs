@@ -70,9 +70,7 @@ pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
 }
 
 pub fn is_key_in_agent(key_content: &str) -> bool {
-    let output = std::process::Command::new("ssh-add")
-        .arg("-L")
-        .output();
+    let output = std::process::Command::new("ssh-add").arg("-L").output();
     match output {
         Ok(out) if out.status.success() => {
             let agent_keys = String::from_utf8_lossy(&out.stdout);

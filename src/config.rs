@@ -31,11 +31,7 @@ impl Config {
 
     pub fn insert(&mut self, serial: String, key: String) {
         for entry in &mut self.entries {
-            if let ConfigEntry::Mapping {
-                serial: s,
-                key: k,
-            } = entry
-            {
+            if let ConfigEntry::Mapping { serial: s, key: k } = entry {
                 if *s == serial {
                     *k = key;
                     return;
@@ -94,10 +90,12 @@ pub fn read_config<P: AsRef<Path>>(path: P) -> Result<Config> {
 
 pub fn write_config<P: AsRef<Path>>(path: P, cfg: Config) -> Result<()> {
     let serialised = serialise_config(&cfg);
-    let basepath = path
-        .as_ref()
-        .parent()
-        .with_context(|| format!("config path has no parent directory: {}", path.as_ref().to_string_lossy()))?;
+    let basepath = path.as_ref().parent().with_context(|| {
+        format!(
+            "config path has no parent directory: {}",
+            path.as_ref().to_string_lossy()
+        )
+    })?;
     create_dir_all(basepath).with_context(|| {
         format!(
             "failed to create directory tree `{}` for config",
@@ -129,9 +127,9 @@ fn parse_config(content: &str) -> Result<Config> {
             continue;
         }
 
-        let (serial, key) = line
-            .split_once("::")
-            .with_context(|| format!("malformed line {i} in config. expected `<serial>::<file path>`"))?;
+        let (serial, key) = line.split_once("::").with_context(|| {
+            format!("malformed line {i} in config. expected `<serial>::<file path>`")
+        })?;
 
         // Validate that the referenced key file exists
         let expanded = tilde(key);
@@ -210,7 +208,9 @@ mod tests {
 
         assert!(matches!(&cfg.entries()[0], ConfigEntry::Comment(s) if s == "# my keys"));
         assert!(matches!(&cfg.entries()[1], ConfigEntry::Blank));
-        assert!(matches!(&cfg.entries()[2], ConfigEntry::Mapping { serial, .. } if serial == "12345678"));
+        assert!(
+            matches!(&cfg.entries()[2], ConfigEntry::Mapping { serial, .. } if serial == "12345678")
+        );
     }
 
     #[test]

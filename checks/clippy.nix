@@ -1,24 +1,19 @@
-{
-  lib,
-  stdenv,
-  pcsclite,
-  eudev,
-  libiconvReal,
-  pkg-config,
-  darwin,
-  inputs,
-}:
+{ pkgs, inputs, flake, ... }:
 let
+  inherit (pkgs) lib stdenv pcsclite eudev libiconvReal pkg-config darwin;
+
   pkgs' = import inputs.nixpkgs {
     inherit (stdenv.hostPlatform) system;
     overlays = [ (import inputs.rust-overlay) ];
   };
-  rust = pkgs'.rust-bin.stable.latest.default;
+  rust = pkgs'.rust-bin.stable.latest.default.override {
+    extensions = [ "clippy" ];
+  };
   craneLib = (inputs.crane.mkLib pkgs').overrideToolchain rust;
 
   commonArgs = {
     stdenv = p: if p.stdenv.isLinux then p.stdenv else p.clangStdenv;
-    src = craneLib.cleanCargoSource (craneLib.path ../../.);
+    src = craneLib.cleanCargoSource flake.outPath;
 
     buildInputs =
       [ pcsclite ]
@@ -40,4 +35,7 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 in
-craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; })
+craneLib.cargoClippy (commonArgs // {
+  inherit cargoArtifacts;
+  cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+})

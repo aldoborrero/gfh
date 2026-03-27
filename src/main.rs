@@ -106,7 +106,11 @@ fn cmd_list(path: &str) -> Result<()> {
 
             let expanded = tilde(key);
             let key_exists = std::path::Path::new(expanded.as_ref()).exists();
-            let key_status = if key_exists { "" } else { " (key file missing)" };
+            let key_status = if key_exists {
+                ""
+            } else {
+                " (key file missing)"
+            };
 
             println!("{serial} :: {key} [{connected}]{key_status}");
         }
@@ -131,9 +135,7 @@ fn cmd_remove(path: &str) -> Result<()> {
         .entries()
         .iter()
         .filter_map(|e| match e {
-            config::ConfigEntry::Mapping { serial, key } => {
-                Some((serial.clone(), key.clone()))
-            }
+            config::ConfigEntry::Mapping { serial, key } => Some((serial.clone(), key.clone())),
             _ => None,
         })
         .collect();
