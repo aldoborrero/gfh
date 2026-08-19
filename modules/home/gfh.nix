@@ -8,12 +8,11 @@ let
   cfg = config.programs.gfh;
 
   # Generate gfh config file content from devices attrset
-  gfhConfigContent = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (
-      serial: device:
-      "# ${device.name}\n${serial}::${device.signingKey}"
-    ) cfg.devices
-  ) + "\n";
+  gfhConfigContent =
+    lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (serial: device: "# ${device.name}\n${serial}::${device.signingKey}") cfg.devices
+    )
+    + "\n";
 
   # Collect all signing key .pub paths for allowed_signers
   allSigningKeyPubs = lib.mapAttrsToList (
@@ -85,6 +84,30 @@ in
         description = "Git user email. Also used as the principal in allowed_signers.";
         example = "82811+aldoborrero@users.noreply.github.com";
       };
+
+      signCommits = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether to sign commits and tags by default.
+
+          Without this, gfh is wired up as git's signing backend but nothing asks
+          git to sign, so commits are silently created unsigned.
+        '';
+      };
+    };
+
+    agentSocket = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "\${XDG_RUNTIME_DIR}/ssh-agent";
+      description = ''
+        Agent socket gfh uses to load a signing key (sets `GFH_AGENT_SOCK`).
+
+        Only needed when `SSH_AUTH_SOCK` points at a read-only agent multiplexer,
+        which forwards signing requests but refuses new keys. Null uses
+        `SSH_AUTH_SOCK`.
+      '';
     };
   };
 
@@ -105,10 +128,24 @@ in
     # Generate ~/.config/gfh/keys
     xdg.configFile."gfh/keys".text = gfhConfigContent;
 
+    home.sessionVariables = lib.mkIf (cfg.agentSocket != null) {
+      GFH_AGENT_SOCK = cfg.agentSocket;
+    };
+
     # Configure git for SSH signing via gfh
     programs.git = lib.mkIf cfg.git.enable {
       signing.format = "ssh";
-      settings.gpg.ssh.defaultKeyCommand = "${cfg.package}/bin/gfh";
+      settings = {
+        gpg.ssh.defaultKeyCommand = "${cfg.package}/bin/gfh";
+      }
+      # Spelled as home-manager's git module spells it, so the two definitions
+      # merge and mkDefault can lose to `signing.signByDefault`. A lowercase
+      # `gpgsign` is a distinct attribute that would silently win instead: git
+      # treats the keys as one and takes the last.
+      // lib.optionalAttrs cfg.git.signCommits {
+        commit.gpgSign = lib.mkDefault true;
+        tag.gpgSign = lib.mkDefault true;
+      };
     };
 
     # Generate allowed_signers at activation time (needs to read .pub files)
