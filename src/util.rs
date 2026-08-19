@@ -18,30 +18,30 @@ impl FidoDevice {
         }
     }
 
-    pub fn serial(&self) -> String {
+    /// The device serial, if it reports one.
+    ///
+    /// `None` rather than a sentinel: the serial is a config lookup key, and
+    /// `"unknown"` or `""` are lines a config can legitimately contain, so a
+    /// device without a serial would match another device's mapping.
+    pub fn serial(&self) -> Option<String> {
         match self {
-            Self::YubiKey(yubi) => yubi.serial().0.to_string(),
-            Self::Generic(device) => {
-                let found = device
-                    .info
-                    .split(' ')
-                    .find(|x| x.starts_with("serial_number="));
-
-                match found {
-                    Some(part) => part
-                        .split_once('=')
-                        .map(|(_, v)| v.to_owned())
-                        .unwrap_or_else(|| String::from("unknown")),
-                    None => String::from("unknown"),
-                }
-            }
+            Self::YubiKey(yubi) => Some(yubi.serial().0.to_string()),
+            Self::Generic(device) => device
+                .info
+                .split(' ')
+                .find_map(|x| x.strip_prefix("serial_number="))
+                .filter(|serial| !serial.is_empty())
+                .map(ToOwned::to_owned),
         }
     }
 }
 
 impl fmt::Display for FidoDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} - {}", self.serial(), self.name())
+        match self.serial() {
+            Some(serial) => write!(f, "{serial} - {}", self.name()),
+            None => write!(f, "<no serial> - {}", self.name()),
+        }
     }
 }
 
@@ -74,7 +74,9 @@ pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
         .into_iter()
         .filter(|x| match x {
             FidoDevice::Generic(h) => !h.product_string.to_lowercase().contains("yubikey"),
-            _ => false,
+            // Unreachable today, but naming it means a new variant is a compile
+            // error here rather than a device silently dropped.
+            FidoDevice::YubiKey(_) => false,
         })
         .collect();
 
@@ -147,8 +149,8 @@ pub fn load_key_into_agent(priv_path: &str, key_content: &str) -> Result<()> {
 
     // The add went to `sock`, but git will look at SSH_AUTH_SOCK. Distinguish
     // the two so a mismatch is not reported as a failed load.
-    if !is_key_in_agent(key_content, None) {
-        if is_key_in_agent(key_content, Some(&sock)) {
+    if !is_key_in_agent(key_content, None)? {
+        if is_key_in_agent(key_content, Some(&sock))? {
             anyhow::bail!(
                 "loaded the signing key into the agent at {sock}, but the agent git \
                  uses (SSH_AUTH_SOCK) does not expose it.\n\
@@ -163,27 +165,40 @@ pub fn load_key_into_agent(priv_path: &str, key_content: &str) -> Result<()> {
 
 /// Whether the agent holds this key. `sock` overrides `SSH_AUTH_SOCK`; `None`
 /// queries the agent git itself will use.
-pub fn is_key_in_agent(key_content: &str, sock: Option<&str>) -> bool {
+///
+/// `Err` means the agent could not be asked, which is a third outcome distinct
+/// from holding the key or not. Collapsing it into `false` makes callers blame
+/// the key for what is really a missing agent.
+pub fn is_key_in_agent(key_content: &str, sock: Option<&str>) -> Result<bool> {
     let mut cmd = std::process::Command::new("ssh-add");
     cmd.arg("-L");
     if let Some(sock) = sock {
         cmd.env("SSH_AUTH_SOCK", sock);
     }
-    let output = cmd.output();
-    match output {
-        Ok(out) if out.status.success() => {
-            let agent_keys = String::from_utf8_lossy(&out.stdout);
-            // Match on key type + base64 blob (first two fields)
-            let parts: Vec<&str> = key_content.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let key_id = format!("{} {}", parts[0], parts[1]);
-                agent_keys.lines().any(|line| line.contains(&key_id))
-            } else {
-                false
-            }
-        }
-        _ => false,
+    let out = cmd.output().context("failed to run ssh-add -L")?;
+
+    // ssh-add(1): 1 is "the agent has no identities", 2 is "could not contact
+    // the agent". Only the latter is a failure to answer the question.
+    match out.status.code() {
+        Some(0 | 1) => {}
+        _ => anyhow::bail!(
+            "could not contact an ssh-agent at {}: {}",
+            sock.unwrap_or("$SSH_AUTH_SOCK"),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
     }
+
+    // Compare key type + base64 blob, the two fields that identify a key; the
+    // trailing comment is free-form and differs between agent and file.
+    let mut wanted = key_content.split_whitespace();
+    let Some(key_id) = wanted.next().zip(wanted.next()) else {
+        anyhow::bail!("malformed public key: expected `<type> <base64>`");
+    };
+
+    Ok(String::from_utf8_lossy(&out.stdout).lines().any(|line| {
+        let mut have = line.split_whitespace();
+        have.next().zip(have.next()) == Some(key_id)
+    }))
 }
 
 #[cfg(test)]

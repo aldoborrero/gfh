@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 fn cmd_sign(path: &str) -> Result<()> {
     let cfg = config::read_config(path)?;
 
-    if cfg.is_empty() {
+    if cfg.has_no_mappings() {
         anyhow::bail!("config is empty. Use `gfh add` to import a SSH key");
     }
 
@@ -58,7 +58,7 @@ fn cmd_sign(path: &str) -> Result<()> {
 
     let selected = devices
         .iter()
-        .find_map(|y| cfg.get(&y.serial()))
+        .find_map(|y| cfg.get(&y.serial()?))
         .with_context(|| format!("no matching FIDO key found in the config at {path}"))?;
 
     let key_path = tilde(selected).into_owned();
@@ -71,7 +71,7 @@ fn cmd_sign(path: &str) -> Result<()> {
     let key_content = key_content.trim();
 
     // git signs via `ssh-keygen -Y sign -U`, which needs the key in the agent.
-    if !util::is_key_in_agent(key_content, None) {
+    if !util::is_key_in_agent(key_content, None)? {
         if std::path::Path::new(&priv_path).exists() {
             util::load_key_into_agent(&priv_path, key_content)?;
         } else {
@@ -98,13 +98,13 @@ fn cmd_list(path: &str) -> Result<()> {
         return Ok(());
     };
 
-    if cfg.is_empty() {
+    if cfg.has_no_mappings() {
         eprintln!("Config is empty. Use `gfh add` to import a SSH key.");
         return Ok(());
     }
 
     let devices = util::get_all_devices()?;
-    let connected_serials: Vec<String> = devices.iter().map(|d| d.serial()).collect();
+    let connected_serials: Vec<String> = devices.iter().filter_map(|d| d.serial()).collect();
 
     for entry in cfg.entries() {
         if let config::ConfigEntry::Mapping { serial, key } = entry {
@@ -137,37 +137,32 @@ fn cmd_remove(path: &str) -> Result<()> {
         anyhow::bail!("no config file found at {path}");
     };
 
-    if cfg.is_empty() {
+    if cfg.has_no_mappings() {
         anyhow::bail!("config is empty, nothing to remove");
     }
 
-    let mappings: Vec<(String, String)> = cfg
+    let mut cfg = cfg;
+    let labels: Vec<String> = cfg
         .entries()
         .iter()
         .filter_map(|e| match e {
-            config::ConfigEntry::Mapping { serial, key } => Some((serial.clone(), key.clone())),
+            config::ConfigEntry::Mapping { serial, key } => Some(format!("{serial} :: {key}")),
             _ => None,
         })
         .collect();
 
-    let labels: Vec<String> = mappings
-        .iter()
-        .map(|(s, k)| format!("{s} :: {k}"))
-        .collect();
-
+    // raw_prompt returns the position, so the choice does not have to be
+    // recovered by matching the rendered label back against the list. Two
+    // mappings can render identically, which made that lookup ambiguous.
     let selected = inquire::Select::new("Select mapping to remove:", labels)
-        .prompt()
-        .with_context(|| "failed to create selection input")?;
+        .raw_prompt()
+        .context("no mapping selected")?;
 
-    let idx = mappings
-        .iter()
-        .position(|(s, k)| format!("{s} :: {k}") == selected)
-        .unwrap();
-    let (serial, _) = &mappings[idx];
-
-    let new_cfg = cfg.without(serial);
-    config::write_config(path, new_cfg)?;
-    println!("Removed mapping for serial {serial}.");
+    let label = selected.value.clone();
+    if cfg.remove_nth_mapping(selected.index) {
+        config::write_config(path, &cfg)?;
+        println!("Removed {label}.");
+    }
 
     Ok(())
 }

@@ -47,8 +47,14 @@ pub fn run<P: AsRef<Path>>(path: P) -> Result<()> {
         config::Config::default()
     };
 
-    cfg.insert(key.serial(), ssh_key);
-    config::write_config(path, cfg)?;
+    // Without a serial there is nothing to key the mapping on, and a placeholder
+    // would make this device match every other serial-less one.
+    let serial = key
+        .serial()
+        .with_context(|| format!("{key} reports no serial number, so it cannot be mapped"))?;
+
+    cfg.insert(serial, ssh_key);
+    config::write_config(path, &cfg)?;
     println!("Success!");
 
     Ok(())

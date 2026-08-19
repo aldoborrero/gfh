@@ -60,17 +60,28 @@ impl Config {
         &self.entries
     }
 
-    pub fn without(self, serial: &str) -> Self {
-        Config {
-            entries: self
-                .entries
-                .into_iter()
-                .filter(|e| !matches!(e, ConfigEntry::Mapping { serial: s, .. } if s == serial))
-                .collect(),
-        }
+    /// Remove the nth mapping, leaving comments, blanks and other mappings.
+    ///
+    /// Indexed rather than keyed by serial: a config may hold duplicate serials,
+    /// and removing by serial would delete every one of them.
+    pub fn remove_nth_mapping(&mut self, n: usize) -> bool {
+        let Some(pos) = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e, ConfigEntry::Mapping { .. }))
+            .map(|(i, _)| i)
+            .nth(n)
+        else {
+            return false;
+        };
+        self.entries.remove(pos);
+        true
     }
 
-    pub fn is_empty(&self) -> bool {
+    /// Whether the config declares no device at all. Comments and blank lines
+    /// may still be present, so this is not `entries().is_empty()`.
+    pub fn has_no_mappings(&self) -> bool {
         !self
             .entries
             .iter()
@@ -95,8 +106,22 @@ pub fn read_config<P: AsRef<Path>>(path: P) -> Result<Config> {
     Ok(cfg)
 }
 
-pub fn write_config<P: AsRef<Path>>(path: P, cfg: Config) -> Result<()> {
-    let serialised = serialise_config(&cfg);
+pub fn write_config<P: AsRef<Path>>(path: P, cfg: &Config) -> Result<()> {
+    // A declaratively managed config is a symlink into a read-only store, and
+    // the write would surface as a bare EROFS on a path the user never typed.
+    if let Ok(target) = std::fs::canonicalize(&path)
+        && std::fs::metadata(&target).is_ok_and(|m| m.permissions().readonly())
+    {
+        anyhow::bail!(
+            "config at {} is not writable: it resolves to {}.\n\
+             If it is generated (home-manager, chezmoi, a dotfiles repo), edit the \
+             source that produces it instead of using `gfh add` or `gfh remove`.",
+            path.as_ref().to_string_lossy(),
+            target.to_string_lossy()
+        );
+    }
+
+    let serialised = serialise_config(cfg);
     let basepath = path.as_ref().parent().with_context(|| {
         format!(
             "config path has no parent directory: {}",
@@ -192,20 +217,20 @@ mod tests {
         let cfg = parse_config(input).unwrap();
         assert_eq!(cfg.get("12345678"), Some("~/.ssh/id_ed25519_sk"));
         assert_eq!(cfg.get("87654321"), Some("~/.ssh/id_ecdsa_sk"));
-        assert!(!cfg.is_empty());
+        assert!(!cfg.has_no_mappings());
     }
 
     #[test]
     fn parse_empty_input_returns_empty_config() {
         let cfg = parse_config("").unwrap();
-        assert!(cfg.is_empty());
+        assert!(cfg.has_no_mappings());
     }
 
     #[test]
     fn parse_only_comments_returns_empty_config() {
         let input = "# comment one\n# comment two\n";
         let cfg = parse_config(input).unwrap();
-        assert!(cfg.is_empty());
+        assert!(cfg.has_no_mappings());
     }
 
     #[test]
@@ -274,7 +299,7 @@ mod tests {
         let mut cfg = Config::new();
         cfg.insert("12345678".to_owned(), "~/.ssh/key".to_owned());
         assert_eq!(cfg.get("12345678"), Some("~/.ssh/key"));
-        assert!(!cfg.is_empty());
+        assert!(!cfg.has_no_mappings());
     }
 
     #[test]
@@ -287,25 +312,44 @@ mod tests {
     #[test]
     fn default_config_is_empty() {
         let cfg = Config::default();
-        assert!(cfg.is_empty());
+        assert!(cfg.has_no_mappings());
         assert_eq!(cfg.get("anything"), None);
     }
 
     #[test]
-    fn without_removes_mapping() {
+    fn remove_nth_mapping_removes_only_that_one() {
         let input = "12345678::~/.ssh/key_a\n87654321::~/.ssh/key_b\n";
-        let cfg = parse_config(input).unwrap();
-        let cfg = cfg.without("12345678");
+        let mut cfg = parse_config(input).unwrap();
+        assert!(cfg.remove_nth_mapping(0));
         assert_eq!(cfg.get("12345678"), None);
         assert_eq!(cfg.get("87654321"), Some("~/.ssh/key_b"));
     }
 
     #[test]
-    fn without_preserves_comments() {
-        let input = "# keep me\n12345678::~/.ssh/key\n";
-        let cfg = parse_config(input).unwrap();
-        let cfg = cfg.without("12345678");
-        assert!(cfg.is_empty());
+    fn remove_nth_mapping_keeps_duplicate_siblings() {
+        // Removing by serial would delete both lines; the user picked one.
+        let input = "11111111::~/.ssh/key_a\n11111111::~/.ssh/key_b\n";
+        let mut cfg = parse_config(input).unwrap();
+        assert!(cfg.remove_nth_mapping(0));
+        assert_eq!(cfg.entries().len(), 1);
+        assert_eq!(cfg.get("11111111"), Some("~/.ssh/key_b"));
+    }
+
+    #[test]
+    fn remove_nth_mapping_skips_comments_and_blanks() {
+        let input = "# keep me\n\n12345678::~/.ssh/key\n";
+        let mut cfg = parse_config(input).unwrap();
+        // Index 0 is the first *mapping*, not the first entry.
+        assert!(cfg.remove_nth_mapping(0));
+        assert!(cfg.has_no_mappings());
         assert!(matches!(&cfg.entries()[0], ConfigEntry::Comment(s) if s == "# keep me"));
+        assert!(matches!(&cfg.entries()[1], ConfigEntry::Blank));
+    }
+
+    #[test]
+    fn remove_nth_mapping_out_of_range_is_a_no_op() {
+        let mut cfg = parse_config("12345678::~/.ssh/key\n").unwrap();
+        assert!(!cfg.remove_nth_mapping(7));
+        assert_eq!(cfg.entries().len(), 1);
     }
 }
