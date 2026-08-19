@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use shellexpand::tilde;
 use std::{
     fs::{create_dir_all, read_to_string, write},
     path::Path,
@@ -117,32 +116,28 @@ fn parse_config(content: &str) -> Result<Config> {
     let mut output = Config::new();
 
     for (i, line) in lines {
-        if line.is_empty() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
             output.push_blank();
             continue;
         }
 
-        if line.starts_with('#') {
+        if trimmed.starts_with('#') {
             output.push_comment(line.to_owned());
             continue;
         }
 
-        let (serial, key) = line.split_once("::").with_context(|| {
-            format!("malformed line {i} in config. expected `<serial>::<file path>`")
+        let (serial, key) = trimmed.split_once("::").with_context(|| {
+            format!(
+                "malformed line {} in config. expected `<serial>::<file path>`",
+                i + 1
+            )
         })?;
 
-        // Validate that the referenced key file exists
-        let expanded = tilde(key);
-        let key_path = Path::new(expanded.as_ref());
-        if !key_path.exists() {
-            eprintln!(
-                "warning: key file '{}' referenced on line {} does not exist",
-                key,
-                i + 1
-            );
-        }
-
-        output.insert(serial.to_owned(), key.to_owned());
+        // `gfh list` renders mappings as `<serial> :: <path>`; without trimming,
+        // pasting that back stores a serial that can never match a device.
+        output.insert(serial.trim().to_owned(), key.trim().to_owned());
     }
 
     Ok(output)
@@ -199,6 +194,20 @@ mod tests {
     fn parse_malformed_line_errors() {
         let input = "no-separator-here\n";
         assert!(parse_config(input).is_err());
+    }
+
+    #[test]
+    fn parse_trims_around_delimiter() {
+        // The format `gfh list` prints, pasted back into the config.
+        let cfg = parse_config("12345678 :: ~/.ssh/key\n").unwrap();
+        assert_eq!(cfg.get("12345678"), Some("~/.ssh/key"));
+    }
+
+    #[test]
+    fn parse_treats_whitespace_only_line_as_blank() {
+        let cfg = parse_config("12345678::~/.ssh/key\n   \n").unwrap();
+        assert_eq!(cfg.get("12345678"), Some("~/.ssh/key"));
+        assert!(matches!(&cfg.entries()[1], ConfigEntry::Blank));
     }
 
     #[test]
