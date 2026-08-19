@@ -1,13 +1,12 @@
-{ pkgs, inputs, flake, ... }:
+{ pkgs, flake, ... }:
 let
-  pkgs' = import inputs.nixpkgs {
-    inherit (pkgs.stdenv.hostPlatform) system;
-    overlays = [ (import inputs.rust-overlay) ];
-  };
-  rust = pkgs'.rust-bin.stable.latest.default.override {
-    extensions = [ "rustfmt" ];
-  };
-  craneLib = (inputs.crane.mkLib pkgs').overrideToolchain rust;
+  inherit
+    (flake.lib.mkRust {
+      inherit pkgs;
+      extensions = [ "rustfmt" ];
+    })
+    craneLib
+    ;
 in
 craneLib.cargoFmt {
   src = craneLib.cleanCargoSource flake.outPath;

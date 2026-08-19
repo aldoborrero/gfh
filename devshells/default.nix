@@ -1,13 +1,23 @@
-{ pkgs, inputs, ... }:
+{
+  flake,
+  pkgs,
+  ...
+}:
 let
-  pkgs' = import inputs.nixpkgs {
-    inherit (pkgs.stdenv.hostPlatform) system;
-    overlays = [ (import inputs.rust-overlay) ];
-  };
-  rust = pkgs'.rust-bin.stable.latest.default;
+  inherit
+    (flake.lib.mkRust {
+      inherit pkgs;
+      extensions = [
+        "clippy"
+        "rust-analyzer"
+        "rust-src"
+        "rustfmt"
+      ];
+    })
+    rust
+    ;
 
-  stdenv =
-    if pkgs.stdenv.isLinux then pkgs.stdenv else pkgs.clangStdenv;
+  stdenv = if pkgs.stdenv.isLinux then pkgs.stdenv else pkgs.clangStdenv;
 in
 pkgs.mkShell {
   inherit stdenv;
@@ -27,7 +37,10 @@ pkgs.mkShell {
 
   buildInputs =
     with pkgs;
-    [ rust pcsclite ]
+    [
+      rust
+      pcsclite
+    ]
     ++ (lib.optionals stdenv.isLinux [ eudev ])
     ++ (lib.optionals stdenv.isDarwin [ libiconvReal ]);
 }
