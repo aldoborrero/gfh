@@ -54,7 +54,18 @@ pub fn get_generics() -> Vec<FidoDevice> {
 
 pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
     let fidos = get_generics();
-    let mut yubikeys = yubikey::get_yubikeys();
+
+    // Degrade rather than fail: other FIDO devices still work without PC/SC. But
+    // say so, because a YubiKey is then invisible and the only other signal the
+    // user gets is "no matching FIDO key found", which blames the config.
+    let mut yubikeys = yubikey::get_yubikeys().unwrap_or_else(|err| {
+        eprintln!(
+            "warning: {err:#}. If a YubiKey is plugged in, check that pcscd is \
+             running and that the CCID interface is enabled."
+        );
+        Vec::new()
+    });
+
     // A YubiKey's HID interface reports an empty iSerial, while the config keys
     // on the PIV serial read over PC/SC. Do not try to reconcile the two: an
     // HID entry's empty serial matches nothing, and shadows a real mapping if a
@@ -66,15 +77,6 @@ pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
             _ => false,
         })
         .collect();
-
-    // Dropping them means losing PC/SC hides YubiKeys completely; say so instead
-    // of reporting "no matching FIDO key found" with one plugged in.
-    if yubikeys.is_empty() && !fidos.is_empty() {
-        eprintln!(
-            "warning: no YubiKey found over PC/SC. If one is plugged in, check that \
-             pcscd is running and that the CCID interface is enabled."
-        );
-    }
 
     fidos.append(&mut yubikeys);
     Ok(fidos)
