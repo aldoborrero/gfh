@@ -62,17 +62,27 @@ fn cmd_sign(path: &str) -> Result<()> {
         .with_context(|| format!("no matching FIDO key found in the config at {path}"))?;
 
     let key_path = tilde(selected).into_owned();
-    let pub_path = if key_path.ends_with(".pub") {
-        key_path
-    } else {
-        format!("{}.pub", key_path)
+    let (priv_path, pub_path) = match key_path.strip_suffix(".pub") {
+        Some(stripped) => (stripped.to_owned(), key_path),
+        None => (key_path.clone(), format!("{}.pub", key_path)),
     };
     let key_content = fs::read_to_string(&pub_path)
         .with_context(|| format!("failed to read public key at {}", pub_path))?;
     let key_content = key_content.trim();
 
-    if !util::is_key_in_agent(key_content) {
-        eprintln!("warning: signing key not found in ssh-agent. Run `ssh-add -K` to load keys from your FIDO device.");
+    // git signs via `ssh-keygen -Y sign -U`, which needs the key in the agent.
+    if !util::is_key_in_agent(key_content, None) {
+        if std::path::Path::new(&priv_path).exists() {
+            util::load_key_into_agent(&priv_path, key_content)?;
+        } else {
+            // A resident credential need not have a local private file. Only the
+            // token can supply it, so warn and let git report the failure rather
+            // than aborting a commit we cannot diagnose.
+            eprintln!(
+                "warning: signing key is not in the ssh-agent and {priv_path} does not exist.\n\
+                 If it is a resident credential, load it with: ssh-add -K"
+            );
+        }
     }
 
     println!("key::{}", key_content);
