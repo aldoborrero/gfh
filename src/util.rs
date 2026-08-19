@@ -46,12 +46,10 @@ impl fmt::Display for FidoDevice {
 }
 
 pub fn get_generics() -> Vec<FidoDevice> {
-    let devices = ctap_hid_fido2::get_fidokey_devices();
-    let devices = devices
-        .iter()
-        .map(|x| FidoDevice::Generic(x.to_owned()))
-        .collect::<Vec<FidoDevice>>();
-    devices
+    ctap_hid_fido2::get_fidokey_devices()
+        .into_iter()
+        .map(FidoDevice::Generic)
+        .collect()
 }
 
 pub fn get_all_devices() -> Result<Vec<FidoDevice>> {

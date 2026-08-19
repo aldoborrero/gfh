@@ -30,11 +30,11 @@ impl Config {
 
     pub fn insert(&mut self, serial: String, key: String) {
         for entry in &mut self.entries {
-            if let ConfigEntry::Mapping { serial: s, key: k } = entry {
-                if *s == serial {
-                    *k = key;
-                    return;
-                }
+            if let ConfigEntry::Mapping { serial: s, key: k } = entry
+                && *s == serial
+            {
+                *k = key;
+                return;
             }
         }
         self.entries.push(ConfigEntry::Mapping { serial, key });

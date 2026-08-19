@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use inquire::{Select, Text};
 use shellexpand::tilde;
 use std::{fs, path::Path};
