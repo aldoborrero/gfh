@@ -32,11 +32,14 @@ for signing your commits, you can just use that config option without gfh.
 
 ## Usage
 
-The simplest way to add your keys to gfh is via `gfh -a`. This will prompt you
+The simplest way to add your keys to gfh is via `gfh add`. This will prompt you
 to select the FIDO key to use, as well as the path to the public key (or private
 key) to use with it (this must be a resident key that you generated for that
 particular FIDO device). If only one device is connected, it will be
 auto-selected.
+
+`gfh list` shows the configured mappings and whether each device is currently
+connected, and `gfh remove` deletes one.
 
 If you prefer, you can edit the config manually by creating a file at
 `~/.config/gfh/keys` with the following format:
@@ -66,8 +69,14 @@ its content directly. Git then uses ssh-agent (`-U` flag) to find the matching
 private key for signing. This means:
 
 - No need for `gpg.ssh.program` — gfh works with the default `ssh-keygen`.
-- The signing key must be loaded in your ssh-agent (gfh warns if it's not).
-- Run `ssh-add -K` to load resident keys from your plugged-in FIDO device.
+- The signing key must be loaded in your ssh-agent. If it isn't, gfh loads it
+  for you from the configured key file, which needs neither a PIN nor a touch —
+  only the signature itself does.
+- For a resident credential with no local key file, run `ssh-add -K` to pull it
+  off the plugged-in FIDO device. gfh warns and lets git report the failure.
+- If `SSH_AUTH_SOCK` points at a read-only agent multiplexer, which forwards
+  signing requests but refuses new keys, set `GFH_AGENT_SOCK` to the writable
+  agent behind it.
 
 If all goes according to plan, you should be able to create a new commit or tag
 with your FIDO key plugged in, and Git will correctly prompt you to sign with
