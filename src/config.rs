@@ -40,6 +40,14 @@ impl Config {
         self.entries.push(ConfigEntry::Mapping { serial, key });
     }
 
+    /// Append a mapping verbatim, keeping duplicates.
+    ///
+    /// Parsing must not mutate: `insert` upserts, which is right for `gfh add`
+    /// and silently drops a line the user wrote when reading a file back.
+    fn push_mapping(&mut self, serial: String, key: String) {
+        self.entries.push(ConfigEntry::Mapping { serial, key });
+    }
+
     pub fn push_comment(&mut self, text: String) {
         self.entries.push(ConfigEntry::Comment(text));
     }
@@ -137,7 +145,17 @@ fn parse_config(content: &str) -> Result<Config> {
 
         // `gfh list` renders mappings as `<serial> :: <path>`; without trimming,
         // pasting that back stores a serial that can never match a device.
-        output.insert(serial.trim().to_owned(), key.trim().to_owned());
+        let serial = serial.trim();
+        let key = key.trim();
+
+        if output.get(serial).is_some() {
+            eprintln!(
+                "warning: duplicate serial {serial} on line {}; the first mapping is used",
+                i + 1
+            );
+        }
+
+        output.push_mapping(serial.to_owned(), key.to_owned());
     }
 
     Ok(output)
@@ -208,6 +226,19 @@ mod tests {
         let cfg = parse_config("12345678::~/.ssh/key\n   \n").unwrap();
         assert_eq!(cfg.get("12345678"), Some("~/.ssh/key"));
         assert!(matches!(&cfg.entries()[1], ConfigEntry::Blank));
+    }
+
+    #[test]
+    fn parse_keeps_duplicate_serials() {
+        // insert() upserts, which silently dropped the first line on read and
+        // let `gfh remove` write the truncated file back.
+        let input = "11111111::~/.ssh/key_a\n11111111::~/.ssh/key_b\n22222222::~/.ssh/key_c\n";
+        let cfg = parse_config(input).unwrap();
+
+        assert_eq!(cfg.entries().len(), 3);
+        assert_eq!(serialise_config(&cfg), input);
+        // Lookup takes the first mapping, matching the warning the parser prints.
+        assert_eq!(cfg.get("11111111"), Some("~/.ssh/key_a"));
     }
 
     #[test]
