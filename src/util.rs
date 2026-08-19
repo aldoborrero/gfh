@@ -69,6 +69,15 @@ pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
         })
         .collect();
 
+    // Dropping them means losing PC/SC hides YubiKeys completely; say so instead
+    // of reporting "no matching FIDO key found" with one plugged in.
+    if yubikeys.is_empty() && !fidos.is_empty() {
+        eprintln!(
+            "warning: no YubiKey found over PC/SC. If one is plugged in, check that \
+             pcscd is running and that the CCID interface is enabled."
+        );
+    }
+
     fidos.append(&mut yubikeys);
     Ok(fidos)
 }
