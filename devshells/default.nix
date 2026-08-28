@@ -17,7 +17,7 @@ let
     rust
     ;
 
-  stdenv = if pkgs.stdenv.isLinux then pkgs.stdenv else pkgs.clangStdenv;
+  stdenv = if pkgs.stdenv.hostPlatform.isLinux then pkgs.stdenv else pkgs.clangStdenv;
 in
 pkgs.mkShell {
   inherit stdenv;
@@ -25,7 +25,7 @@ pkgs.mkShell {
   nativeBuildInputs =
     with pkgs;
     [ pkg-config ]
-    ++ (lib.optionals stdenv.isDarwin (
+    ++ (lib.optionals stdenv.hostPlatform.isDarwin (
       with darwin.apple_sdk;
       [
         frameworks.AppKit
@@ -41,6 +41,6 @@ pkgs.mkShell {
       rust
       pcsclite
     ]
-    ++ (lib.optionals stdenv.isLinux [ eudev ])
-    ++ (lib.optionals stdenv.isDarwin [ libiconvReal ]);
+    ++ (lib.optionals stdenv.hostPlatform.isLinux [ eudev ])
+    ++ (lib.optionals stdenv.hostPlatform.isDarwin [ libiconvReal ]);
 }

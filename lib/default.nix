@@ -16,7 +16,13 @@
     in
     {
       inherit rust;
-      craneLib = (inputs.crane.mkLib pkgs').overrideToolchain rust;
+      # The stdenv must be selected here rather than passed per-derivation:
+      # crane deprecated the `stdenv` argument to `mkCargoDerivation`.
+      craneLib = ((inputs.crane.mkLib pkgs').overrideToolchain rust).overrideScope (
+        _final: _prev: {
+          stdenvSelector = p: if p.stdenv.hostPlatform.isLinux then p.stdenv else p.clangStdenv;
+        }
+      );
     };
 
   # Native dependencies for talking to a smart card, shared by every derivation
@@ -27,18 +33,16 @@
       inherit (pkgs) lib stdenv;
     in
     {
-      stdenv = p: if p.stdenv.isLinux then p.stdenv else p.clangStdenv;
-
       buildInputs = [
         pkgs.pcsclite
       ]
-      ++ lib.optionals stdenv.isLinux [ pkgs.eudev ]
-      ++ lib.optionals stdenv.isDarwin [ pkgs.libiconvReal ];
+      ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.eudev ]
+      ++ lib.optionals stdenv.hostPlatform.isDarwin [ pkgs.libiconvReal ];
 
       nativeBuildInputs = [
         pkgs.pkg-config
       ]
-      ++ lib.optionals stdenv.isDarwin (
+      ++ lib.optionals stdenv.hostPlatform.isDarwin (
         with pkgs.darwin.apple_sdk;
         [
           frameworks.AppKit
