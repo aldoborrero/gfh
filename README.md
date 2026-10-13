@@ -51,6 +51,13 @@ serial::~/.ssh/id_ecdsa_sk
 
 (Blank lines & lines starting with `#` are preserved.)
 
+The serial is the device's own serial number. For a YubiKey, gfh reads it over
+the FIDO HID interface (Yubico's `READ_CONFIG` command, as `ykman` does), so
+finding the signing key needs neither pcscd nor the CCID interface. Keys that
+do not answer that command, such as the YubiKey 4, are read over PC/SC instead.
+gfh waits up to 2 seconds for a key to answer; set `GFH_HID_TIMEOUT_MS` (or
+`--hid-timeout-ms`), in milliseconds from 1 to 60000, to change that.
+
 After importing your keys to gfh, run the following commands to set up SSH
 signing with Git:
 

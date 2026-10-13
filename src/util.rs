@@ -1,12 +1,22 @@
 use anyhow::{Context, Result};
 use core::fmt;
-use ctap_hid_fido2::HidInfo;
+use ctap_hid_fido2::{HidInfo, HidParam};
+use hidapi::HidApi;
+use std::time::Duration;
 use yubikey_api::YubiKey;
 
-use crate::yubikey;
+use crate::{hid_serial, yubikey};
+
+const YUBICO_VID: u16 = 0x1050;
 
 pub enum FidoDevice {
+    /// A YubiKey read over PC/SC.
     YubiKey(YubiKey),
+    /// A YubiKey whose serial was read over its FIDO HID interface.
+    YubiKeyHid {
+        name: String,
+        serial: u32,
+    },
     Generic(HidInfo),
 }
 
@@ -14,6 +24,7 @@ impl FidoDevice {
     pub fn name(&self) -> String {
         match self {
             Self::YubiKey(yubi) => yubi.name().to_owned(),
+            Self::YubiKeyHid { name, .. } => name.clone(),
             Self::Generic(device) => device.product_string.clone(),
         }
     }
@@ -26,6 +37,7 @@ impl FidoDevice {
     pub fn serial(&self) -> Option<String> {
         match self {
             Self::YubiKey(yubi) => Some(yubi.serial().0.to_string()),
+            Self::YubiKeyHid { serial, .. } => Some(serial.to_string()),
             Self::Generic(device) => device
                 .info
                 .split(' ')
@@ -45,43 +57,66 @@ impl fmt::Display for FidoDevice {
     }
 }
 
-pub fn get_generics() -> Vec<FidoDevice> {
-    ctap_hid_fido2::get_fidokey_devices()
+/// Every connected FIDO device. `timeout` bounds each YubiKey's answer over
+/// FIDO HID.
+pub fn get_all_devices(timeout: Duration) -> Result<Vec<FidoDevice>> {
+    let (yubikeys, others): (Vec<HidInfo>, Vec<HidInfo>) = ctap_hid_fido2::get_fidokey_devices()
         .into_iter()
-        .map(FidoDevice::Generic)
-        .collect()
-}
-
-pub fn get_all_devices() -> Result<Vec<FidoDevice>> {
-    let fidos = get_generics();
-
-    // Degrade rather than fail: other FIDO devices still work without PC/SC. But
-    // say so, because a YubiKey is then invisible and the only other signal the
-    // user gets is "no matching FIDO key found", which blames the config.
-    let mut yubikeys = yubikey::get_yubikeys().unwrap_or_else(|err| {
-        eprintln!(
-            "warning: {err:#}. If a YubiKey is plugged in, check that pcscd is \
-             running and that the CCID interface is enabled."
-        );
-        Vec::new()
-    });
+        .partition(|h| h.vid == YUBICO_VID);
+    let mut devices: Vec<FidoDevice> = others.into_iter().map(FidoDevice::Generic).collect();
 
     // A YubiKey's HID interface reports an empty iSerial, while the config keys
-    // on the PIV serial read over PC/SC. Do not try to reconcile the two: an
-    // HID entry's empty serial matches nothing, and shadows a real mapping if a
-    // config line also has an empty serial.
-    let mut fidos: Vec<FidoDevice> = fidos
-        .into_iter()
-        .filter(|x| match x {
-            FidoDevice::Generic(h) => !h.product_string.to_lowercase().contains("yubikey"),
-            // Unreachable today, but naming it means a new variant is a compile
-            // error here rather than a device silently dropped.
-            FidoDevice::YubiKey(_) => false,
-        })
-        .collect();
+    // on the device serial. Read that over FIDO HID first, so that signing
+    // never touches PC/SC: on a key shared over USB/IP, pcscd polling CCID
+    // corrupts the FIDO signature that follows (see hid_serial).
+    let mut unread = 0;
+    match HidApi::new() {
+        Ok(api) => {
+            for h in &yubikeys {
+                let serial = match &h.param {
+                    HidParam::Path(path) => hid_serial::read_serial(&api, path, timeout),
+                    HidParam::VidPid { .. } => Ok(None),
+                };
+                match serial {
+                    Ok(Some(serial)) => devices.push(FidoDevice::YubiKeyHid {
+                        name: h.product_string.clone(),
+                        serial,
+                    }),
+                    Ok(None) => unread += 1,
+                    Err(err) => {
+                        eprintln!("warning: {}: {err:#}", h.product_string);
+                        unread += 1;
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("warning: could not open the HID API: {err}");
+            unread = yubikeys.len();
+        }
+    }
 
-    fidos.append(&mut yubikeys);
-    Ok(fidos)
+    // Older YubiKeys do not answer READ_CONFIG over FIDO; only those need PC/SC.
+    if unread > 0 {
+        // Degrade rather than fail: other FIDO devices still work without PC/SC.
+        // But say so, because a YubiKey is then invisible and the only other
+        // signal the user gets is "no matching FIDO key found", which blames
+        // the config.
+        let pcsc = yubikey::get_yubikeys().unwrap_or_else(|err| {
+            eprintln!(
+                "warning: {err:#}. If a YubiKey is plugged in, check that pcscd is \
+                 running and that the CCID interface is enabled."
+            );
+            Vec::new()
+        });
+        let known: Vec<String> = devices.iter().filter_map(FidoDevice::serial).collect();
+        devices.extend(
+            pcsc.into_iter()
+                .filter(|d| d.serial().is_none_or(|s| !known.contains(&s))),
+        );
+    }
+
+    Ok(devices)
 }
 
 /// Socket to use when *adding* a key.

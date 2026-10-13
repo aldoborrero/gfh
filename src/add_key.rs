@@ -1,12 +1,12 @@
 use anyhow::{Context, Result, anyhow};
 use inquire::{Select, Text};
 use shellexpand::tilde;
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 use crate::{config, util};
 
-pub fn run<P: AsRef<Path>>(path: P) -> Result<()> {
-    let keys = util::get_all_devices()?;
+pub fn run<P: AsRef<Path>>(path: P, timeout: Duration) -> Result<()> {
+    let keys = util::get_all_devices(timeout)?;
 
     if keys.is_empty() {
         return Err(anyhow!("was not able to find any connected FIDO keys"));

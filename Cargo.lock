@@ -581,6 +581,7 @@ dependencies = [
  "clap",
  "ctap-hid-fido2",
  "dirs 6.0.0",
+ "hidapi",
  "inquire",
  "shellexpand",
  "yubikey",

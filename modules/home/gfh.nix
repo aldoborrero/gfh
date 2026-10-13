@@ -109,6 +109,18 @@ in
         `SSH_AUTH_SOCK`.
       '';
     };
+
+    hidTimeout = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 60000);
+      default = null;
+      example = 500;
+      description = ''
+        How long gfh waits for a YubiKey to answer over FIDO HID, in
+        milliseconds (sets `GFH_HID_TIMEOUT_MS`). A healthy key answers in a few
+        milliseconds; this only bounds how long a key that never answers can
+        delay a commit. Null keeps gfh's default of 2000.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -128,9 +140,11 @@ in
     # Generate ~/.config/gfh/keys
     xdg.configFile."gfh/keys".text = gfhConfigContent;
 
-    home.sessionVariables = lib.mkIf (cfg.agentSocket != null) {
-      GFH_AGENT_SOCK = cfg.agentSocket;
-    };
+    home.sessionVariables =
+      lib.optionalAttrs (cfg.agentSocket != null) { GFH_AGENT_SOCK = cfg.agentSocket; }
+      // lib.optionalAttrs (cfg.hidTimeout != null) {
+        GFH_HID_TIMEOUT_MS = toString cfg.hidTimeout;
+      };
 
     # Configure git for SSH signing via gfh
     programs.git = lib.mkIf cfg.git.enable {

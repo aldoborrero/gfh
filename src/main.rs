@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use shellexpand::tilde;
-use std::fs;
+use std::{fs, time::Duration};
 
 mod add_key;
 mod config;
+mod hid_serial;
 mod util;
 mod yubikey;
 
@@ -19,6 +20,17 @@ fn default_config_path() -> String {
 struct Args {
     #[arg(short, long, global = true, default_value_t = default_config_path())]
     file: String,
+
+    /// How long to wait for a YubiKey to answer over FIDO HID, in milliseconds
+    #[arg(
+        long,
+        global = true,
+        env = "GFH_HID_TIMEOUT_MS",
+        value_name = "MS",
+        default_value_t = 2000,
+        value_parser = clap::value_parser!(u64).range(1..=60_000)
+    )]
+    hid_timeout_ms: u64,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -37,24 +49,25 @@ enum Command {
 fn main() -> Result<()> {
     let args = Args::parse();
     let path = tilde(&args.file).into_owned();
+    let timeout = Duration::from_millis(args.hid_timeout_ms);
 
     match args.command {
-        Some(Command::Add) => add_key::run(path),
-        Some(Command::List) => cmd_list(&path),
+        Some(Command::Add) => add_key::run(path, timeout),
+        Some(Command::List) => cmd_list(&path, timeout),
         Some(Command::Remove) => cmd_remove(&path),
-        None => cmd_sign(&path),
+        None => cmd_sign(&path, timeout),
     }
 }
 
 /// Default: output the signing key for git's defaultKeyCommand
-fn cmd_sign(path: &str) -> Result<()> {
+fn cmd_sign(path: &str, timeout: Duration) -> Result<()> {
     let cfg = config::read_config(path)?;
 
     if cfg.has_no_mappings() {
         anyhow::bail!("config is empty. Use `gfh add` to import a SSH key");
     }
 
-    let devices = util::get_all_devices()?;
+    let devices = util::get_all_devices(timeout)?;
 
     let selected = devices
         .iter()
@@ -90,7 +103,7 @@ fn cmd_sign(path: &str) -> Result<()> {
 }
 
 /// List all configured mappings with connection status
-fn cmd_list(path: &str) -> Result<()> {
+fn cmd_list(path: &str, timeout: Duration) -> Result<()> {
     let cfg = if std::path::Path::new(path).exists() {
         config::read_config(path)?
     } else {
@@ -103,7 +116,7 @@ fn cmd_list(path: &str) -> Result<()> {
         return Ok(());
     }
 
-    let devices = util::get_all_devices()?;
+    let devices = util::get_all_devices(timeout)?;
     let connected_serials: Vec<String> = devices.iter().filter_map(|d| d.serial()).collect();
 
     for entry in cfg.entries() {
