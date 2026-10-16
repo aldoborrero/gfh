@@ -5,7 +5,7 @@ use hidapi::HidApi;
 use std::time::Duration;
 use yubikey_api::YubiKey;
 
-use crate::{hid_serial, yubikey};
+use crate::{bridge, hid_serial, yubikey};
 
 const YUBICO_VID: u16 = 0x1050;
 
@@ -18,6 +18,10 @@ pub enum FidoDevice {
         serial: u32,
     },
     Generic(HidInfo),
+    /// A YubiKey attached to Windows, listed by windows-fido-bridge.
+    Bridged {
+        serial: u32,
+    },
 }
 
 impl FidoDevice {
@@ -26,6 +30,7 @@ impl FidoDevice {
             Self::YubiKey(yubi) => yubi.name().to_owned(),
             Self::YubiKeyHid { name, .. } => name.clone(),
             Self::Generic(device) => device.product_string.clone(),
+            Self::Bridged { .. } => "YubiKey on Windows (windows-fido-bridge)".to_owned(),
         }
     }
 
@@ -37,7 +42,7 @@ impl FidoDevice {
     pub fn serial(&self) -> Option<String> {
         match self {
             Self::YubiKey(yubi) => Some(yubi.serial().0.to_string()),
-            Self::YubiKeyHid { serial, .. } => Some(serial.to_string()),
+            Self::YubiKeyHid { serial, .. } | Self::Bridged { serial } => Some(serial.to_string()),
             Self::Generic(device) => device
                 .info
                 .split(' ')
@@ -59,7 +64,18 @@ impl fmt::Display for FidoDevice {
 
 /// Every connected FIDO device. `timeout` bounds each YubiKey's answer over
 /// FIDO HID.
+///
+/// Under windows-fido-bridge only the bridge is asked: ssh signs with the keys
+/// attached to Windows, so a key seen locally could not sign anyway.
 pub fn get_all_devices(timeout: Duration) -> Result<Vec<FidoDevice>> {
+    if let Some(exe) = bridge::locate() {
+        let serials = bridge::list_serials(&exe, bridge::TIMEOUT)?;
+        return Ok(serials
+            .into_iter()
+            .map(|serial| FidoDevice::Bridged { serial })
+            .collect());
+    }
+
     let (yubikeys, others): (Vec<HidInfo>, Vec<HidInfo>) = ctap_hid_fido2::get_fidokey_devices()
         .into_iter()
         .partition(|h| h.vid == YUBICO_VID);
@@ -239,6 +255,13 @@ pub fn is_key_in_agent(key_content: &str, sock: Option<&str>) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bridged_device_matches_config_by_serial() {
+        let device = FidoDevice::Bridged { serial: 12345678 };
+        assert_eq!(device.serial().as_deref(), Some("12345678"));
+        assert!(device.to_string().starts_with("12345678 - "));
+    }
 
     #[test]
     fn rejects_option_like_key_path() {

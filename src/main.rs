@@ -4,6 +4,7 @@ use shellexpand::tilde;
 use std::{fs, time::Duration};
 
 mod add_key;
+mod bridge;
 mod config;
 mod hid_serial;
 mod util;
