@@ -89,6 +89,25 @@ If all goes according to plan, you should be able to create a new commit or tag
 with your FIDO key plugged in, and Git will correctly prompt you to sign with
 it.
 
+### WSL (windows-fido-bridge)
+
+Under WSL with
+[windows-fido-bridge](https://github.com/aldoborrero/windows-fido-bridge), the
+YubiKeys stay attached to Windows, so gfh cannot see them over HID or PC/SC.
+When `SSH_SK_PROVIDER` names the bridge's middleware library and
+`windowsfidobridge.exe` sits in the same directory, gfh asks that executable
+for the connected serials (`windowsfidobridge.exe --list-serials`) and skips
+local HID and PC/SC entirely. This applies to `gfh`, `gfh list` and `gfh add`.
+The call is killed after 10 seconds, and a bridge failure is an error rather
+than an empty list. Set `GFH_BRIDGE=0` to ignore the bridge and use local
+devices.
+
+Loading the key works as elsewhere: `ssh-add` reads `SSH_SK_PROVIDER` itself
+and passes it to the agent along with the key. ssh-agent only accepts providers
+matching its `-P` allow-list, which defaults to `/usr/lib*/*,/usr/local/lib*/*`,
+so for a bridge installed from Nix the agent must be started with e.g.
+`-P '/nix/store/*'`.
+
 ## Installation
 
 ### Nix
