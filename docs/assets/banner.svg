@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="560" viewBox="0 0 1600 560" role="img" aria-labelledby="title desc">
+  <title id="title">gfh — sign Git commits with whichever FIDO key is plugged in</title>
+  <desc id="desc">Git runs gfh as its gpg.ssh.defaultKeyCommand. gfh reads the serial of the plugged-in security key over FIDO HID, PC/SC or windows-fido-bridge, looks it up in ~/.config/gfh/keys, and prints the matching public key, which git signs with through ssh-agent.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1 1 L9 6 L1 11" fill="none" stroke="#5b6570" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="blue-arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1 1 L9 6 L1 11" fill="none" stroke="#294f82" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <style>
+    @media (prefers-color-scheme: dark) {
+      svg { background-color: #181825 }
+      [fill="#ffffff"] { fill: #181825 }
+      [fill="#f0f5fa"] { fill: #1e1e2e }
+      [fill="#20252b"] { fill: #cdd6f4 }
+      [fill="#5b6570"] { fill: #a6adc8 }
+      [stroke="#5b6570"] { stroke: #a6adc8 }
+      [fill="#294f82"] { fill: #89b4fa }
+      [stroke="#294f82"] { stroke: #89b4fa }
+      [stroke="#dce2e8"] { stroke: #45475a }
+      [stroke="#87929e"] { stroke: #6c7086 }
+      [fill="#87929e"] { fill: #6c7086 }
+    }
+  </style>
+
+  <rect width="1600" height="560" fill="#ffffff"/>
+
+  <g font-family="DejaVu Sans, Arial, Helvetica, sans-serif" fill="#20252b">
+    <!-- header -->
+    <text x="64" y="104" font-size="58" font-weight="700">gfh</text>
+    <text x="64" y="156" font-size="28" fill="#5b6570">Sign Git commits with whichever FIDO key is plugged in. One resident SSH key per device.</text>
+    <path d="M64 196 H1536" stroke="#dce2e8" stroke-width="2"/>
+
+    <!-- step labels -->
+    <g font-size="20" font-weight="700" letter-spacing="3" fill="#87929e">
+      <text x="64" y="250">PLUGGED IN</text>
+      <text x="394" y="250">GFH</text>
+      <text x="866" y="250">CONFIG</text>
+      <text x="1266" y="250">GIT</text>
+    </g>
+
+    <!-- boxes -->
+    <g stroke-width="3">
+      <rect x="64" y="282" width="270" height="190" rx="14" fill="#ffffff" stroke="#87929e"/>
+      <rect x="394" y="282" width="340" height="190" rx="14" fill="#f0f5fa" stroke="#294f82"/>
+      <rect x="866" y="282" width="340" height="190" rx="14" fill="#f0f5fa" stroke="#294f82"/>
+      <rect x="1266" y="282" width="270" height="190" rx="14" fill="#ffffff" stroke="#87929e"/>
+    </g>
+
+    <g text-anchor="middle">
+      <!-- 1. the key -->
+      <text x="199" y="342" font-size="30" font-weight="700">Security key</text>
+      <text x="199" y="388" font-size="22" fill="#5b6570">primary · backup · …</text>
+      <text x="199" y="424" font-size="22" fill="#5b6570">YubiKey · FIDO2</text>
+
+      <!-- 2. gfh -->
+      <text x="564" y="342" font-size="30" font-weight="700" fill="#294f82">reads the serial</text>
+      <text x="564" y="388" font-size="22" fill="#5b6570">FIDO HID · PC/SC</text>
+      <text x="564" y="424" font-size="22" fill="#5b6570">windows-fido-bridge</text>
+
+      <!-- 3. the mapping -->
+      <text x="1036" y="342" font-size="30" font-weight="700" fill="#294f82">serial → key</text>
+      <text x="1036" y="388" font-size="20" fill="#5b6570" font-family="DejaVu Sans Mono, Menlo, monospace">18042805::~/.ssh/a_sk</text>
+      <text x="1036" y="424" font-size="20" fill="#5b6570" font-family="DejaVu Sans Mono, Menlo, monospace">20646006::~/.ssh/b_sk</text>
+
+      <!-- 4. git -->
+      <text x="1401" y="342" font-size="30" font-weight="700">git commit -S</text>
+      <text x="1401" y="388" font-size="22" fill="#5b6570">defaultKeyCommand</text>
+      <text x="1401" y="424" font-size="22" fill="#5b6570">signs via ssh-agent</text>
+    </g>
+
+    <!-- arrows -->
+    <g fill="none" stroke-width="3" stroke-linecap="round">
+      <path d="M342 377 H382" stroke="#5b6570" marker-end="url(#arrow)"/>
+      <path d="M744 377 H854" stroke="#294f82" marker-end="url(#blue-arrow)"/>
+      <path d="M1214 377 H1254" stroke="#5b6570" marker-end="url(#arrow)"/>
+    </g>
+    <text x="800" y="358" font-size="16" text-anchor="middle" fill="#294f82" font-weight="700">lookup</text>
+    <text x="800" y="406" font-size="16" text-anchor="middle" fill="#5b6570">first match</text>
+    <text x="800" y="426" font-size="16" text-anchor="middle" fill="#5b6570">wins</text>
+
+    <!-- footer -->
+    <text x="64" y="526" font-size="21" fill="#5b6570">Rust · Nix · home-manager module · no user.signingkey to swap when you change keys</text>
+  </g>
+</svg>

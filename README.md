@@ -1,145 +1,207 @@
+<div align="center">
+
 # gfh
 
-> Git FIDO helper, or God Fucking Help me.
+### Git FIDO helper: sign commits with whichever FIDO key is plugged in.
 
-gfh is a tool for helping you sign your commits in Git with resident SSH keys
-stored on multiple FIDO devices.
+**One resident SSH key per security key. gfh tells git which one to use, so there is no `user.signingkey` to swap.**
 
-<p align="center">
-  <a href="#getting-started">Getting Started</a>
-  -
-  <a href="#usage">Usage</a>
-  -
-  <a href="#installation">Installation</a>
-</p>
+[![CI](https://img.shields.io/github/actions/workflow/status/aldoborrero/gfh/ci.yaml?branch=main&style=flat-square&label=CI)](https://github.com/aldoborrero/gfh/actions)
+[![Rust](https://img.shields.io/badge/Rust-2024_edition-b7410e?style=flat-square&logo=rust&logoColor=white)](Cargo.toml)
+[![Nix flake](https://img.shields.io/badge/Nix-flake-5277c3?style=flat-square&logo=nixos&logoColor=white)](#nix)
+[![License](https://img.shields.io/badge/license-MIT-f4c430?style=flat-square)](LICENSE)
 
-**NB:** Currently this project has only been tested with the YubiKey 5C NFC. Any
-FIDO2 certified device _should_ be compatible, but please let me know if you
-encountered any issues with particular devices, or also if it works fine so that
-I can have a running list of all keys that are verified working.
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Commands](#commands) · [WSL](#wsl-windows-fido-bridge) · [Installation](#installation) · [Troubleshooting](#troubleshooting) · [Contributing](#contributing)
 
-## Getting Started
+<br />
 
-Before you get started with gfh, you'll need to make sure that you already have
-a resident SSH key on your FIDO key(s). The simplest way to do this is via
-`ssh-keygen -t ed25519-sk -O resident`, but there are better guides online if
-you need some different stuff.
+<img src="docs/assets/banner.svg" alt="git runs gfh, which reads the serial of the plugged-in security key, looks it up in ~/.config/gfh/keys and hands git the matching public key to sign with through ssh-agent" width="100%" />
 
-If you don't own multiple FIDO keys/only use one resident SSH key, then you more
-than likely do not need to use gfh. This tool has a very niche use case due to
-Git not supporting multiple `signingkey`s. If you only use one resident SSH key
-for signing your commits, you can just use that config option without gfh.
+</div>
 
-## Usage
+## Why
 
-The simplest way to add your keys to gfh is via `gfh add`. This will prompt you
-to select the FIDO key to use, as well as the path to the public key (or private
-key) to use with it (this must be a resident key that you generated for that
-particular FIDO device). If only one device is connected, it will be
-auto-selected.
+Git takes a single `user.signingkey`. If you keep a resident SSH key on each of two or three YubiKeys (a primary and a backup, say), whichever one you plug in has to be the one Git signs with, so you end up editing your config every time you switch keys.
 
-`gfh list` shows the configured mappings and whether each device is currently
-connected, and `gfh remove` deletes one.
+gfh removes that step. Git calls it as `gpg.ssh.defaultKeyCommand`, gfh reads the serial of the key that is plugged in, looks that serial up in a small mapping file, and prints the matching public key. If you only own one key, set `user.signingkey` and you don't need gfh.
 
-If you prefer, you can edit the config manually by creating a file at
-`~/.config/gfh/keys` with the following format:
+> [!NOTE]
+> This is a fork of [Ovyerus/gfh](https://github.com/Ovyerus/gfh). Reading YubiKey serials over FIDO HID, the windows-fido-bridge support, the home-manager module and the Nix packaging only exist here.
 
-```
-serial::~/.ssh/id_ed25519_sk
-serial::~/.ssh/id_ecdsa_sk
-```
+## Quick start
 
-(Blank lines & lines starting with `#` are preserved.)
-
-The serial is the device's own serial number. For a YubiKey, gfh reads it over
-the FIDO HID interface (Yubico's `READ_CONFIG` command, as `ykman` does), so
-finding the signing key needs neither pcscd nor the CCID interface. Keys that
-do not answer that command, such as the YubiKey 4, are read over PC/SC instead.
-gfh waits up to 2 seconds for a key to answer; set `GFH_HID_TIMEOUT_MS` (or
-`--hid-timeout-ms`), in milliseconds from 1 to 60000, to change that.
-
-After importing your keys to gfh, run the following commands to set up SSH
-signing with Git:
+Install gfh. With Nix it's one command; see [Installation](#installation) for home-manager and building from source.
 
 ```sh
-git config --global commit.gpgsign true
-git config --global tag.gpgsign true
-git config --global gpg.format "ssh"
-git config --global gpg.ssh.defaultKeyCommand "gfh"
+nix profile install github:aldoborrero/gfh
 ```
 
-(You shouldn't set `user.signingkey` because gfh will handle that for you
-automatically.)
+You need a resident SSH key on each FIDO device. If you don't have one yet:
 
-gfh reads the `.pub` file corresponding to the configured key path and outputs
-its content directly. Git then uses ssh-agent (`-U` flag) to find the matching
-private key for signing. This means:
+```sh
+ssh-keygen -t ed25519-sk -O resident -f ~/.ssh/id_ed25519_sk_primary
+```
 
-- No need for `gpg.ssh.program` — gfh works with the default `ssh-keygen`.
-- The signing key must be loaded in your ssh-agent. If it isn't, gfh loads it
-  for you from the configured key file, which needs neither a PIN nor a touch —
-  only the signature itself does.
-- For a resident credential with no local key file, run `ssh-add -K` to pull it
-  off the plugged-in FIDO device. gfh warns and lets git report the failure.
-- If `SSH_AUTH_SOCK` points at a read-only agent multiplexer, which forwards
-  signing requests but refuses new keys, set `GFH_AGENT_SOCK` to the writable
-  agent behind it.
+Plug in each key in turn and map it to its SSH key:
 
-If all goes according to plan, you should be able to create a new commit or tag
-with your FIDO key plugged in, and Git will correctly prompt you to sign with
-it.
+```sh
+gfh add      # pick the device (auto-selected if only one), then give the key path
+gfh list     # check the mappings
+```
 
-### WSL (windows-fido-bridge)
+Point Git at gfh:
 
-Under WSL with
-[windows-fido-bridge](https://github.com/aldoborrero/windows-fido-bridge), the
-YubiKeys stay attached to Windows, so gfh cannot see them over HID or PC/SC.
-When `SSH_SK_PROVIDER` names the bridge's middleware library and
-`windowsfidobridge.exe` sits in the same directory, gfh asks that executable
-for the connected serials (`windowsfidobridge.exe --list-serials`) and skips
-local HID and PC/SC entirely. This applies to `gfh`, `gfh list` and `gfh add`.
-The call is killed after 10 seconds, and a bridge failure is an error rather
-than an empty list. Set `GFH_BRIDGE=0` to ignore the bridge and use local
-devices.
+```sh
+git config --global gpg.format ssh
+git config --global gpg.ssh.defaultKeyCommand gfh
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
 
-Loading the key works as elsewhere: `ssh-add` reads `SSH_SK_PROVIDER` itself
-and passes it to the agent along with the key. ssh-agent only accepts providers
-matching its `-P` allow-list, which defaults to `/usr/lib*/*,/usr/local/lib*/*`,
-so for a bridge installed from Nix the agent must be started with e.g.
-`-P '/nix/store/*'`.
+Leave `user.signingkey` unset, otherwise Git uses it and never asks gfh. Your next commit asks for a touch on whichever key is plugged in.
+
+## How it works
+
+1. Git needs a signing key and runs `gfh` with no arguments.
+2. gfh lists the connected FIDO devices and reads each one's serial. A YubiKey 5 answers Yubico's `READ_CONFIG` command over its FIDO HID interface (as it does for `ykman`), so gfh needs neither pcscd nor the CCID interface. Older YubiKeys such as the YubiKey 4 don't implement that command, and gfh falls back to PC/SC for them. Other FIDO2 devices report their serial in the HID descriptor. Under WSL, gfh asks [windows-fido-bridge](#wsl-windows-fido-bridge) instead.
+3. The first connected device whose serial appears in `~/.config/gfh/keys` wins.
+4. gfh reads the matching `.pub` file and prints `key::<public key>`.
+5. Git signs with `ssh-keygen -Y sign -U`, which looks up the private key in your ssh-agent.
+
+If the key isn't in the agent yet, gfh runs `ssh-add` on the configured file first. Loading a FIDO key handle needs no PIN and no touch; only the signature does. gfh runs `ssh-add` without a prompt, so a passphrase-protected key file fails fast instead of hanging your commit on an askpass dialog.
+
+A resident credential without a local key file can't be loaded that way. gfh prints a warning and Git reports the failure; run `ssh-add -K` to pull the key off the device.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `gfh` | Print the signing key for the connected device. This is what Git runs. |
+| `gfh add` | Pick a connected device and map its serial to an SSH key file. Running it again for the same serial replaces the mapping. |
+| `gfh list` | Show every mapping, whether its device is connected, and whether its key file exists. |
+| `gfh remove` | Pick a mapping and delete it. |
+
+Global options:
+
+| Option | Env var | Default | |
+|---|---|---|---|
+| `-f, --file <PATH>` | | `~/.config/gfh/keys` | Mapping file to use. |
+| `--hid-timeout-ms <MS>` | `GFH_HID_TIMEOUT_MS` | `2000` | How long to wait for a YubiKey to answer over FIDO HID, from 1 to 60000. A healthy key answers in a few milliseconds. |
+
+Other environment variables:
+
+| Variable | |
+|---|---|
+| `GFH_AGENT_SOCK` | Agent socket gfh loads keys into. Set it when `SSH_AUTH_SOCK` points at a read-only agent multiplexer that forwards signatures but refuses new keys. |
+| `GFH_BRIDGE=0` | Ignore windows-fido-bridge and look for local devices. |
+
+## Config file
+
+`~/.config/gfh/keys` holds one `serial::path` per line. The path can be the private or the `.pub` key file:
+
+```text
+# Primary YubiKey
+18042805::~/.ssh/id_ed25519_sk_primary
+# Backup YubiKey
+20646006::~/.ssh/id_ed25519_sk_backup.pub
+```
+
+`gfh add` and `gfh remove` keep comments and blank lines. Spaces around `::` are fine, so you can paste a line from `gfh list` back in. If a serial appears twice, gfh warns and uses the first line.
+
+If the file is generated (home-manager, chezmoi, a dotfiles repo) and lives on a read-only path, `gfh add` refuses to write it and tells you to edit the source instead.
+
+## WSL (windows-fido-bridge)
+
+With [windows-fido-bridge](https://github.com/aldoborrero/windows-fido-bridge), your YubiKeys stay attached to Windows, so gfh can't see them over HID or PC/SC from WSL. When `SSH_SK_PROVIDER` points at the bridge's `libwindowsfidobridge.so` and `windowsfidobridge.exe` sits in the same directory, gfh runs `windowsfidobridge.exe --list-serials` and skips local devices entirely. This applies to `gfh`, `gfh list` and `gfh add`.
+
+gfh kills the call after 10 seconds. If the bridge fails, gfh reports that failure directly, so you see the real cause rather than "no matching FIDO key found".
+
+Loading the key works as usual: `ssh-add` reads `SSH_SK_PROVIDER` and hands it to the agent along with the key. ssh-agent only accepts providers that match its `-P` allow-list (`/usr/lib*/*,/usr/local/lib*/*` by default), so if the bridge comes from Nix, start the agent with something like `-P '/nix/store/*'`.
 
 ## Installation
 
 ### Nix
 
+```sh
+nix run github:aldoborrero/gfh -- list
 ```
-nix run github:aldoborrero/gfh
+
+Or add the flake as an input and use `gfh.packages.${system}.default`.
+
+### home-manager
+
+The flake ships a home-manager module that writes the mapping file, configures Git to sign through gfh, and generates `~/.ssh/allowed_signers` from your public keys:
+
+```nix
+{ inputs, pkgs, ... }:
+{
+  imports = [ inputs.gfh.homeModules.gfh ];
+
+  programs.gfh = {
+    enable = true;
+    package = inputs.gfh.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+    devices = {
+      "18042805" = { name = "Primary YubiKey"; signingKey = "~/.ssh/id_ed25519_sk_primary"; };
+      "20646006" = { name = "Backup YubiKey";  signingKey = "~/.ssh/id_ed25519_sk_backup"; };
+    };
+
+    git = {
+      userName = "Your Name";
+      userEmail = "you@example.com"; # also the principal in allowed_signers
+    };
+
+    # agentSocket = "\${XDG_RUNTIME_DIR}/ssh-agent"; # sets GFH_AGENT_SOCK
+    # hidTimeout = 500;                             # sets GFH_HID_TIMEOUT_MS
+  };
+}
 ```
 
-Or add to your flake inputs and reference `gfh.packages.${system}.default`.
-
-### Crate
-
-`cargo install gfh`
+`git.signCommits` (on by default) turns on `commit.gpgSign` and `tag.gpgSign`. Set it to `false` if you only want gfh wired in as the signing backend.
 
 ### From source
 
-Pull this repository and run `cargo build --release`, and look for the `gfh`
-binary in `./target/release/`.
+```sh
+cargo build --release   # binary at ./target/release/gfh
+```
 
-When building from source or from Cargo, on Linux you will need the following
-packages: `pkg-config libpcsclite-dev libudev-dev`
+On Linux you'll need `pkg-config`, the PC/SC lite headers and libudev (`pkg-config libpcsclite-dev libudev-dev` on Debian/Ubuntu).
 
-### Homebrew
+### Upstream packages
 
-`brew install ovyerus/tap/gfh`
+`cargo install gfh` and `brew install ovyerus/tap/gfh` build the original Ovyerus/gfh, not this fork.
 
-### AUR (unofficial)
+## Troubleshooting
 
-An unofficial AUR package from [wale](https://github.com/wale) is available at
-https://aur.archlinux.org/packages/gfh.
+**`no matching FIDO key found in the config`.** Run `gfh list`. If every mapping says `not connected`, gfh didn't find the key you plugged in. An older YubiKey is only visible over PC/SC, so check that pcscd is running and the CCID interface is enabled; gfh prints a warning when it can't reach PC/SC.
+
+**`could not load the signing key into the ssh-agent`.** gfh shows the `ssh-add` command it ran and what `ssh-add` said. If `SSH_AUTH_SOCK` is a read-only multiplexer, set `GFH_AGENT_SOCK` to the writable agent behind it, e.g. `$XDG_RUNTIME_DIR/ssh-agent`.
+
+**`... the agent git uses (SSH_AUTH_SOCK) does not expose it`.** gfh loaded the key into the agent at `GFH_AGENT_SOCK`, but Git asks the agent behind `SSH_AUTH_SOCK`, which doesn't see it. Point `GFH_AGENT_SOCK` at an agent that `SSH_AUTH_SOCK` reaches.
+
+**`signing key is not in the ssh-agent and ... does not exist`.** The mapping points at a resident credential with no key file on disk. Load it with `ssh-add -K`, or export it with `ssh-keygen -K` and map the resulting file.
+
+**A commit hangs before the touch prompt.** A YubiKey that never answers over HID delays the commit by up to `GFH_HID_TIMEOUT_MS`. Under WSL, a cold start of the bridge's Windows process can take a second or more.
+
+## Compatibility
+
+Tested with the YubiKey 5C NFC. Any FIDO2 device that reports a serial in its HID descriptor should work. If you try another device, please open an issue saying whether it worked, so the list can grow.
+
+## Contributing
+
+Issues and pull requests are welcome at [aldoborrero/gfh](https://github.com/aldoborrero/gfh). CI runs `nix flake check` and builds for Linux and macOS, so run it locally before you open a PR.
+
+```sh
+nix develop          # Rust toolchain, clippy, rust-analyzer, pcsclite
+cargo test
+nix flake check      # clippy (deny warnings), rustfmt, build
+nix fmt              # treefmt: rustfmt, nixfmt, deadnix, taplo
+```
+
+## Acknowledgments
+
+gfh was created by [Ovyerus](https://github.com/Ovyerus) at [Ovyerus/gfh](https://github.com/Ovyerus/gfh) ("Git FIDO helper, or God Fucking Help me"). The idea, the `serial::path` config format and the `defaultKeyCommand` approach all come from there, and this fork builds on that work.
 
 ## License
 
-This program is licensed under the MIT license (see [LICENSE](./LICENSE) or
-https://opensource.org/licenses/MIT).
+MIT, see [LICENSE](LICENSE). Copyright 2022 Ovyerus.
