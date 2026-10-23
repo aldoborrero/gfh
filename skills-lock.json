@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skills": {
+    "crafting-effective-readmes": {
+      "source": "softaworks/agent-toolkit",
+      "sourceType": "github",
+      "skillPath": "skills/crafting-effective-readmes/SKILL.md",
+      "computedHash": "c931a8c22160e8925400778fcb2266b5d1df762f3052edba65f72479f79f2d6c"
+    },
+    "humanizer": {
+      "source": "blader/humanizer",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "d85c4727f62296887c3206e32a99caeed7611af7c4701c1b9931897260e31a73"
+    },
+    "nix-blueprint": {
+      "source": "aldoborrero/cc-skills-nix",
+      "sourceType": "github",
+      "skillPath": "skills/nix-blueprint/SKILL.md",
+      "computedHash": "dc3edf1a6a5beae88cdf4211ec3f4680bef2032913c395b5f630a0ede14b2fed"
+    },
+    "nix-treefmt-formatter": {
+      "source": "aldoborrero/cc-skills-nix",
+      "sourceType": "github",
+      "skillPath": "skills/nix-treefmt-formatter/SKILL.md",
+      "computedHash": "608115e20e18e8ce29dd8561e8752ab9afa8e01bc71f1f6ebf2991649f427620"
+    },
+    "rust-best-practices": {
+      "source": "apollographql/skills",
+      "sourceType": "github",
+      "skillPath": "skills/rust-best-practices/SKILL.md",
+      "computedHash": "a3db351ec552ed9d36b59e547d6c1d94077867eb5bcb98b3f802dfebb0a8a248"
+    },
+    "rust-review": {
+      "source": "trailofbits/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/rust-review/skills/rust-review/SKILL.md",
+      "computedHash": "3de2fb6f09a8d57d4f5c3ea2e94871af222b960f5da444115ad4119af6fb38a4"
+    },
+    "rust-testing": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/rust-testing/SKILL.md",
+      "computedHash": "bd66d6441ff6d3a6acb89c902cd6a01bf58410aec3ecbc43d45409b3a3788ac8"
+    }
+  }
+}
