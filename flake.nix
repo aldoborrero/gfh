@@ -20,5 +20,15 @@
     };
   };
 
-  outputs = inputs: inputs.blueprint { inherit inputs; };
+  # nixpkgs 26.11 dropped x86_64-darwin.
+  outputs =
+    inputs:
+    inputs.blueprint {
+      inherit inputs;
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+    };
 }

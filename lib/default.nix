@@ -39,17 +39,7 @@
       ++ lib.optionals stdenv.hostPlatform.isLinux [ pkgs.eudev ]
       ++ lib.optionals stdenv.hostPlatform.isDarwin [ pkgs.libiconvReal ];
 
-      nativeBuildInputs = [
-        pkgs.pkg-config
-      ]
-      ++ lib.optionals stdenv.hostPlatform.isDarwin (
-        with pkgs.darwin.apple_sdk;
-        [
-          frameworks.AppKit
-          frameworks.CoreFoundation
-          frameworks.IOKit
-          frameworks.PCSC
-        ]
-      );
+      # On Darwin the stdenv ships the full SDK, frameworks included.
+      nativeBuildInputs = [ pkgs.pkg-config ];
     };
 }

@@ -46,12 +46,8 @@ jobs:
 
   build-macos:
     needs: checks
+    # Apple silicon only: nixpkgs 26.11 dropped x86_64-darwin.
     runs-on: macos-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64
-          - aarch64
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v30
@@ -62,7 +58,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gfh-macos-${{ matrix.target }}
+          name: gfh-macos-aarch64
           path: ./result/bin/gfh
 
   create-release:

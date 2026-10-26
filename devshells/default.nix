@@ -22,18 +22,7 @@ in
 pkgs.mkShell {
   inherit stdenv;
 
-  nativeBuildInputs =
-    with pkgs;
-    [ pkg-config ]
-    ++ (lib.optionals stdenv.hostPlatform.isDarwin (
-      with darwin.apple_sdk;
-      [
-        frameworks.AppKit
-        frameworks.CoreFoundation
-        frameworks.IOKit
-        frameworks.PCSC
-      ]
-    ));
+  nativeBuildInputs = [ pkgs.pkg-config ];
 
   buildInputs =
     with pkgs;
