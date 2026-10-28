@@ -10,68 +10,68 @@ on:
     tags:
       - v*
 
+# A newer push to the same ref makes the older run moot. Tags always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - run: nix flake check
 
-  build-linux:
+      # Evaluation only: catches a nixpkgs change that breaks another system
+      # (e.g. darwin.apple_sdk removal) without needing that runner.
+      - run: nix flake check --all-systems --no-build
+      - run: nix flake check --print-build-logs
+
+  build:
     needs: checks
     strategy:
+      fail-fast: false
       matrix:
-        platform:
-          - name: x86_64
+        include:
+          - name: linux-x86_64
             runs-on: ubuntu-latest
-          - name: aarch64
-            runs-on: [self-hosted, linux, ARM64]
-    runs-on: ${{ matrix.platform.runs-on }}
+          - name: linux-aarch64
+            runs-on: ubuntu-24.04-arm
+          # Apple silicon only: nixpkgs 26.11 dropped x86_64-darwin.
+          - name: macos-aarch64
+            runs-on: macos-latest
+    runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: nix build .#gfh
+      - run: nix build --print-build-logs .#gfh
 
-      - name: Upload ${{ matrix.platform.name }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: gfh-linux-${{ matrix.platform.name }}
+          name: gfh-${{ matrix.name }}
           path: ./result/bin/gfh
-
-  build-macos:
-    needs: checks
-    # Apple silicon only: nixpkgs 26.11 dropped x86_64-darwin.
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - run: nix build .#gfh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gfh-macos-aarch64
-          path: ./result/bin/gfh
+          if-no-files-found: error
 
   create-release:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    needs:
-      - build-linux
-      - build-macos
+    needs: build
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
 
       - name: Package artifacts
         run: |
@@ -79,12 +79,11 @@ jobs:
           for dir in gfh-*; do
             filename="$dir.tar.gz"
             tar czf "out/$filename" -C "$dir" .
-            sha256sum "out/$filename" >> "out/checksums.txt"
           done
+          (cd out && sha256sum ./*.tar.gz > checksums.txt)
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          generate_release_notes: true
-          files: ./out/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --verify-tag
