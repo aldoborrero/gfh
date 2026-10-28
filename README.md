@@ -130,7 +130,7 @@ Or add the flake as an input and use `gfh.packages.${system}.default`.
 
 ### home-manager
 
-The flake ships a home-manager module that writes the mapping file, configures Git to sign through gfh, and generates `~/.ssh/allowed_signers` from your public keys:
+The flake ships a home-manager module that writes the mapping file, configures Git to sign through gfh, and generates `~/.ssh/allowed_signers` from your public keys so `git log --show-signature` can verify them:
 
 ```nix
 { inputs, pkgs, ... }:
@@ -147,8 +147,8 @@ The flake ships a home-manager module that writes the mapping file, configures G
     };
 
     git = {
-      userName = "Your Name";
-      userEmail = "you@example.com"; # also the principal in allowed_signers
+      userName = "Your Name";        # optional, sets user.name
+      userEmail = "you@example.com"; # sets user.email and the allowed_signers principal
     };
 
     # agentSocket = "\${XDG_RUNTIME_DIR}/ssh-agent"; # sets GFH_AGENT_SOCK

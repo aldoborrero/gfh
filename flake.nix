@@ -9,6 +9,12 @@
 
     crane.url = "github:ipetkov/crane";
 
+    # Only for checks/home-module.nix, which evaluates the module.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";

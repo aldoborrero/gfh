@@ -14,14 +14,25 @@ let
     )
     + "\n";
 
+  # Expand a leading `~/` here: the activation script quotes every path, and
+  # the shell does not expand a tilde inside quotes.
+  expandHome =
+    path:
+    if lib.hasPrefix "~/" path then
+      "${config.home.homeDirectory}/${lib.removePrefix "~/" path}"
+    else
+      path;
+
   # Collect all signing key .pub paths for allowed_signers
   allSigningKeyPubs = lib.mapAttrsToList (
     _serial: device:
     let
-      key = device.signingKey;
+      key = expandHome device.signingKey;
     in
     if lib.hasSuffix ".pub" key then key else "${key}.pub"
   ) cfg.devices;
+
+  allowedSignersFile = "${config.home.homeDirectory}/.ssh/allowed_signers";
 
   deviceOpts = {
     options = {
@@ -74,14 +85,15 @@ in
       };
 
       userName = lib.mkOption {
-        type = lib.types.str;
-        description = "Git user name for commit attribution.";
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Git user name for commit attribution (sets `user.name`). Null leaves it unset.";
         example = "Aldo Borrero";
       };
 
       userEmail = lib.mkOption {
         type = lib.types.str;
-        description = "Git user email. Also used as the principal in allowed_signers.";
+        description = "Git user email (sets `user.email`). Also used as the principal in allowed_signers.";
         example = "82811+aldoborrero@users.noreply.github.com";
       };
 
@@ -151,6 +163,14 @@ in
       signing.format = "ssh";
       settings = {
         gpg.ssh.defaultKeyCommand = "${cfg.package}/bin/gfh";
+        # Lets `git log --show-signature` and `git verify-commit` check them.
+        gpg.ssh.allowedSignersFile = allowedSignersFile;
+        user = {
+          email = lib.mkDefault cfg.git.userEmail;
+        }
+        // lib.optionalAttrs (cfg.git.userName != null) {
+          name = lib.mkDefault cfg.git.userName;
+        };
       }
       # Spelled as home-manager's git module spells it, so the two definitions
       # merge and mkDefault can lose to `signing.signByDefault`. A lowercase
@@ -165,13 +185,15 @@ in
     # Generate allowed_signers at activation time (needs to read .pub files)
     home.activation.generateAllowedSigners = lib.mkIf cfg.git.enable (
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        email="${cfg.git.userEmail}"
-        sshDir="/home/${config.home.username}/.ssh"
-        out="$sshDir/allowed_signers"
-        : > "$out"
+        email=${lib.escapeShellArg cfg.git.userEmail}
+        signers=${lib.escapeShellArg allowedSignersFile}
+        mkdir -p "$(dirname "$signers")"
+        : > "$signers"
         ${lib.concatMapStringsSep "\n" (pubPath: ''
-          if [ -f "${pubPath}" ]; then
-            echo "$email $(cat "${pubPath}")" >> "$out"
+          if [ -f ${lib.escapeShellArg pubPath} ]; then
+            echo "$email $(cat ${lib.escapeShellArg pubPath})" >> "$signers"
+          else
+            warnEcho "gfh: signing key "${lib.escapeShellArg pubPath}" not found, left out of $signers"
           fi
         '') allSigningKeyPubs}
       ''
