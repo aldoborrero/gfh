@@ -18,7 +18,7 @@ pub enum FidoDevice {
         serial: u32,
     },
     Generic(HidInfo),
-    /// A YubiKey attached to Windows, listed by windows-fido-bridge.
+    /// A YubiKey attached to Windows, listed by wsl-fido-bridge.
     Bridged {
         serial: u32,
     },
@@ -30,7 +30,7 @@ impl FidoDevice {
             Self::YubiKey(yubi) => yubi.name().to_owned(),
             Self::YubiKeyHid { name, .. } => name.clone(),
             Self::Generic(device) => device.product_string.clone(),
-            Self::Bridged { .. } => "YubiKey on Windows (windows-fido-bridge)".to_owned(),
+            Self::Bridged { .. } => "YubiKey on Windows (wsl-fido-bridge)".to_owned(),
         }
     }
 
@@ -65,7 +65,7 @@ impl fmt::Display for FidoDevice {
 /// Every connected FIDO device. `timeout` bounds each YubiKey's answer over
 /// FIDO HID.
 ///
-/// Under windows-fido-bridge only the bridge is asked: ssh signs with the keys
+/// Under wsl-fido-bridge only the bridge is asked: ssh signs with the keys
 /// attached to Windows, so a key seen locally could not sign anyway.
 pub fn get_all_devices(timeout: Duration) -> Result<Vec<FidoDevice>> {
     if let Some(exe) = bridge::locate() {
